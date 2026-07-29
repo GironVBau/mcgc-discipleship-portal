@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "@/services/auth.service";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
+  const supabase = createClient();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,18 +20,42 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMessage("");
 
+    // 1. Authenticate user credentials
     const { data, error } = await signIn(email, password);
 
-    if (error) {
-      setErrorMessage(error.message);
+    if (error || !data?.user) {
+      setErrorMessage(error?.message || "Sign in failed. Please check your credentials.");
       setLoading(false);
       return;
     }
 
-    console.log("✅ Login successful!");
-    console.log("User:", data.user);
+    // 2. Fetch user role from database profiles table
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
 
-    router.push("/dashboard");
+    if (profileError || !profile) {
+      await supabase.auth.signOut();
+      setErrorMessage("Error retrieving user profile. Access denied.");
+      setLoading(false);
+      return;
+    }
+
+    // 3. Security Gate: Only allow students through this login
+    if (profile.role !== "student") {
+      await supabase.auth.signOut();
+      setErrorMessage("Access Denied: Staff and Admin accounts must use the Staff Portal.");
+      setLoading(false);
+      return;
+    }
+
+    console.log("✅ Student login successful!");
+
+    // 4. Refresh router state & redirect to student dashboard
+    router.refresh();
+    router.push("/dashboard/student");
   }
 
   return (
@@ -40,7 +66,7 @@ export default function LoginPage() {
         </h1>
 
         <p className="mb-8 text-center text-gray-600">
-          Sign in to continue
+          Student Portal — Sign in to continue
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
