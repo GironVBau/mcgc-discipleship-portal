@@ -8,6 +8,7 @@ import Link from "next/link";
 export default function StaffLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -19,19 +20,17 @@ export default function StaffLogin() {
     setLoading(true);
     setErrorMessage("");
 
-    // 1. Authenticate user credentials
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (authError || !authData.user) {
-      setErrorMessage(authError?.message || "Login failed. Please check your credentials.");
+      setErrorMessage(authError?.message || "Login failed. Please verify credentials.");
       setLoading(false);
       return;
     }
 
-    // 2. Fetch ground-truth role from the profiles table
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
@@ -45,7 +44,6 @@ export default function StaffLogin() {
       return;
     }
 
-    // 3. Security Gate: Strictly reject student accounts attempting staff sign-in
     if (profile.role !== "teacher" && profile.role !== "admin") {
       await supabase.auth.signOut();
       setErrorMessage("Access Denied: This portal is reserved for Teachers and Admins.");
@@ -53,7 +51,6 @@ export default function StaffLogin() {
       return;
     }
 
-    // 4. Refresh router state and redirect based on exact role
     router.refresh();
 
     if (profile.role === "admin") {
@@ -64,56 +61,94 @@ export default function StaffLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-[#1e2e68] flex flex-col justify-center items-center p-4">
-      <div className="bg-white text-gray-900 p-8 rounded-xl shadow-2xl w-full max-w-md space-y-6">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      {/* Background Accent Lines */}
+      <div className="absolute top-1/4 -right-20 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -left-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="w-full max-w-md relative z-10 space-y-6">
+        
+        {/* Header */}
         <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold text-[#1e2e68]">Staff & Teacher Portal</h2>
-          <p className="text-sm text-gray-500">Sign in with your instructor or admin account</p>
+          <span className="text-xs font-bold uppercase tracking-widest text-blue-400 bg-blue-400/10 px-3.5 py-1.5 rounded-full border border-blue-400/20">
+            Staff & Leadership Portal
+          </span>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight pt-2">Instructor Access</h1>
+          <p className="text-sm text-slate-400">Sign in to manage classes and evaluate students</p>
         </div>
 
-        {errorMessage && (
-          <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg">
-            {errorMessage}
-          </div>
-        )}
-
-        <form onSubmit={handleStaffLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1e2e68]"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1e2e68]"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-[#1e2e68] hover:bg-[#162350] text-white font-bold py-2.5 rounded-md transition-colors disabled:opacity-50"
+        {/* Tab Switcher */}
+        <div className="grid grid-cols-2 p-1 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
+          <Link
+            href="/login/student"
+            className="py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all text-center flex items-center justify-center"
           >
-            {loading ? "Signing in..." : "Sign In to Portal"}
+            Student Portal
+          </Link>
+          <button className="py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 shadow-md transition-all">
+            Staff / Teacher
           </button>
-        </form>
+        </div>
 
-        <div className="text-center pt-2">
-          <Link href="/" className="text-sm text-gray-500 hover:underline">
-            ← Back to Home
+        {/* Card */}
+        <div className="bg-slate-900/60 border border-slate-800 backdrop-blur-xl p-8 rounded-3xl shadow-2xl space-y-6">
+          {errorMessage && (
+            <div className="p-4 text-xs font-medium text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-2xl">
+              {errorMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleStaffLogin} className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Work Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="staff@church.org"
+                required
+                className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-slate-600"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-slate-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-200"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-[0.99] text-white font-extrabold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all text-sm disabled:opacity-50"
+            >
+              {loading ? "Authenticating..." : "Sign In to Staff Portal →"}
+            </button>
+          </form>
+        </div>
+
+        {/* Return Link */}
+        <div className="text-center">
+          <Link href="/" className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors">
+            ← Return to Home Page
           </Link>
         </div>
+
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ export default async function LessonPage({ params }: PageProps) {
   const { courseSlug, lessonSlug } = await params;
   const supabase = await createClient();
 
+  // 1. Fetch Course
   const { data: course, error: courseError } = await supabase
     .from('courses')
     .select('*')
@@ -40,6 +41,7 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
+  // 2. Fetch Lesson
   const numericLessonNumber = parseInt(lessonSlug.replace('lesson-', ''), 10);
 
   let lessonQuery = supabase.from('lessons').select('*').eq('course_id', course.id);
@@ -70,6 +72,7 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
+  // 3. User Progress Tracking
   const { data: { user } } = await supabase.auth.getUser();
   let initialIsStudied = false;
   if (user) {
@@ -84,6 +87,28 @@ export default async function LessonPage({ params }: PageProps) {
       initialIsStudied = true;
     }
   }
+
+  // 4. Content Extractor Helper Function for Structured SQL Data
+  const rawPoints: string[] = lesson.teaching_points || [];
+
+  const snapshot = rawPoints.find(p => p.startsWith('LESSON SNAPSHOT:'))?.replace('LESSON SNAPSHOT:', '').trim();
+  const doctrine = rawPoints.find(p => p.startsWith('FOUNDATIONAL DOCTRINE:'))?.replace('FOUNDATIONAL DOCTRINE:', '').trim();
+  const keyTerms = rawPoints.find(p => p.startsWith('KEY TERMS:'))?.replace('KEY TERMS:', '').trim();
+  const gospel = rawPoints.find(p => p.startsWith('GOSPEL CONNECTION:'))?.replace('GOSPEL CONNECTION:', '').trim();
+  const memoryVerse = rawPoints.find(p => p.startsWith('MEMORY VERSE:'))?.replace('MEMORY VERSE:', '').trim();
+  const walkingWithChrist = rawPoints.find(p => p.startsWith('WALKING WITH CHRIST THIS WEEK:'))?.replace('WALKING WITH CHRIST THIS WEEK:', '').trim();
+  const assurance = rawPoints.find(p => p.startsWith('ASSURANCE OF SALVATION:'))?.replace('ASSURANCE OF SALVATION:', '').trim();
+
+  // Filter regular main points out of special metadata prefixes
+  const mainPoints = rawPoints.filter(p => 
+    !p.startsWith('LESSON SNAPSHOT:') &&
+    !p.startsWith('FOUNDATIONAL DOCTRINE:') &&
+    !p.startsWith('KEY TERMS:') &&
+    !p.startsWith('GOSPEL CONNECTION:') &&
+    !p.startsWith('MEMORY VERSE:') &&
+    !p.startsWith('WALKING WITH CHRIST THIS WEEK:') &&
+    !p.startsWith('ASSURANCE OF SALVATION:')
+  );
 
   return (
     <ContentProtection>
@@ -118,6 +143,32 @@ export default async function LessonPage({ params }: PageProps) {
             </h1>
           </header>
 
+          {/* Lesson Snapshot & Foundational Doctrine */}
+          {(snapshot || doctrine) && (
+            <section className="bg-indigo-900 text-white rounded-3xl p-6 sm:p-8 space-y-4 shadow-md">
+              {snapshot && (
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-800 text-indigo-200 px-2.5 py-0.5 rounded-full">
+                    Lesson Snapshot
+                  </span>
+                  <p className="text-sm sm:text-base font-medium leading-relaxed pt-1 text-indigo-100 whitespace-pre-line">
+                    {snapshot}
+                  </p>
+                </div>
+              )}
+              {doctrine && (
+                <div className="space-y-1 pt-3 border-t border-indigo-800/80">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-indigo-800 text-indigo-200 px-2.5 py-0.5 rounded-full">
+                    Foundational Doctrine
+                  </span>
+                  <p className="text-sm sm:text-base font-normal leading-relaxed pt-1 text-indigo-100 whitespace-pre-line">
+                    {doctrine}
+                  </p>
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Lesson Objective & Key Scriptures */}
           <section className="bg-gradient-to-br from-blue-50/80 via-blue-50/20 to-white border border-blue-100 rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm">
             {lesson.objective && (
@@ -125,7 +176,7 @@ export default async function LessonPage({ params }: PageProps) {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#1e2e68] bg-blue-100 px-2.5 py-0.5 rounded-full">
                   Lesson Objective
                 </span>
-                <p className="text-base sm:text-lg font-medium text-slate-800 leading-relaxed pt-1">
+                <p className="text-base sm:text-lg font-medium text-slate-800 leading-relaxed pt-1 whitespace-pre-line">
                   {lesson.objective}
                 </p>
               </div>
@@ -150,24 +201,76 @@ export default async function LessonPage({ params }: PageProps) {
             )}
           </section>
 
+          {/* Key Terms Section */}
+          {keyTerms && (
+            <section className="bg-slate-100 border border-slate-200 rounded-3xl p-6 sm:p-8 space-y-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-200 px-2.5 py-0.5 rounded-full">
+                Key Terms
+              </span>
+              <p className="text-sm sm:text-base text-slate-700 leading-relaxed font-normal whitespace-pre-line">
+                {keyTerms}
+              </p>
+            </section>
+          )}
+
           {/* Teaching Points */}
-          {lesson.teaching_points && Array.isArray(lesson.teaching_points) && lesson.teaching_points.length > 0 && (
+          {mainPoints.length > 0 && (
             <section className="bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-sm space-y-6">
               <h2 className="text-xl font-bold text-slate-900 tracking-tight border-b border-slate-100 pb-4">
-                Teaching Points
+                Teaching Material
               </h2>
               <div className="space-y-4">
-                {lesson.teaching_points.map((point: string, index: number) => (
+                {mainPoints.map((point: string, index: number) => (
                   <div key={index} className="flex items-start gap-4 p-4 rounded-2xl bg-slate-50/80 border border-slate-100">
                     <span className="w-6 h-6 rounded-full bg-[#1e2e68] text-white font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                       {index + 1}
                     </span>
-                    <p className="text-slate-700 text-sm sm:text-base font-medium leading-relaxed">
+                    <p className="text-slate-700 text-sm sm:text-base font-medium leading-relaxed whitespace-pre-line">
                       {point}
                     </p>
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {/* Assurance Section */}
+          {assurance && (
+            <section className="bg-blue-50 border border-blue-200 rounded-3xl p-6 sm:p-8 space-y-2">
+              <h3 className="text-base font-bold text-[#1e2e68]">Assurance of Salvation</h3>
+              <p className="text-sm sm:text-base text-slate-700 leading-relaxed whitespace-pre-line">{assurance}</p>
+            </section>
+          )}
+
+          {/* Gospel Connection & Memory Verse */}
+          {(gospel || memoryVerse) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {gospel && (
+                <section className="bg-rose-50/60 border border-rose-200 rounded-3xl p-6 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 bg-rose-100 px-2.5 py-0.5 rounded-full">
+                    Gospel Connection
+                  </span>
+                  <p className="text-sm text-slate-800 leading-relaxed pt-2 whitespace-pre-line">{gospel}</p>
+                </section>
+              )}
+              {memoryVerse && (
+                <section className="bg-amber-50/60 border border-amber-200 rounded-3xl p-6 space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                    Memory Verse
+                  </span>
+                  <p className="text-sm font-semibold italic text-slate-800 leading-relaxed pt-2 whitespace-pre-line">{memoryVerse}</p>
+                </section>
+              )}
+            </div>
+          )}
+
+          {/* Walking with Christ This Week */}
+          {walkingWithChrist && (
+            <section className="bg-teal-50/60 border border-teal-200 rounded-3xl p-6 sm:p-8 space-y-3">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-100 px-2.5 py-0.5 rounded-full">
+                Walking With Christ This Week
+              </span>
+              <p className="text-sm sm:text-base text-slate-800 leading-relaxed whitespace-pre-line">{walkingWithChrist}</p>
             </section>
           )}
 
@@ -179,7 +282,7 @@ export default async function LessonPage({ params }: PageProps) {
               </div>
               <ul className="space-y-3">
                 {lesson.discussion_questions.map((q: string, index: number) => (
-                  <li key={index} className="flex items-start gap-3 text-sm text-slate-800 leading-relaxed">
+                  <li key={index} className="flex items-start gap-3 text-sm text-slate-800 leading-relaxed whitespace-pre-line">
                     <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
                       {index + 1}
                     </span>
@@ -198,7 +301,7 @@ export default async function LessonPage({ params }: PageProps) {
               </div>
               <ul className="space-y-3">
                 {lesson.reflection_prompts.map((prompt: string, index: number) => (
-                  <li key={index} className="flex items-start gap-3 text-sm text-slate-800 leading-relaxed">
+                  <li key={index} className="flex items-start gap-3 text-sm text-slate-800 leading-relaxed whitespace-pre-line">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-2"></span>
                     {prompt}
                   </li>

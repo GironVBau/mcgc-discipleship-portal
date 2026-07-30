@@ -32,14 +32,25 @@ export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   const pathname = url.pathname;
 
-  // Unauthenticated users trying to access dashboards
-  if (!user && (pathname.startsWith("/dashboard") || pathname.startsWith("/admin"))) {
+  // 1. Define Public Routes (Anyone can access without logging in)
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/enroll") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/_next") ||
+    pathname.includes("."); // Assets, favicons, images
+
+  // 2. UNAUTHENTICATED USER LOCK
+  // If the user is NOT logged in and tries to access ANY protected route
+  if (!user && !isPublicRoute) {
     url.pathname = "/login/student";
+    url.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(url);
   }
 
+  // 3. AUTHENTICATED USER ROLE RESTRICTIONS
   if (user) {
-    // Fetch user role from metadata or profiles table
     const userRole = user.user_metadata?.role || "student";
 
     // RESTRICTION 1: Students cannot enter Teacher or Admin routes
@@ -58,6 +69,9 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// 4. Update matcher to run on protected areas while ignoring static assets
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/enroll"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };
