@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "@/services/auth.service";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Email or Username
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -20,8 +19,31 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMessage("");
 
+    let loginEmail = identifier.trim();
+
+    // Check if user entered username instead of email
+    const isEmail = loginEmail.includes("@");
+    if (!isEmail) {
+      const { data: profile, error: userLookupError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("username", loginEmail.toLowerCase())
+        .maybeSingle();
+
+      if (userLookupError || !profile?.email) {
+        setErrorMessage("Invalid username or email. Account not found.");
+        setLoading(false);
+        return;
+      }
+
+      loginEmail = profile.email;
+    }
+
     // 1. Authenticate user credentials
-    const { data, error } = await signIn(email, password);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: loginEmail,
+      password,
+    });
 
     if (error || !data?.user) {
       setErrorMessage(error?.message || "Sign in failed. Please check your credentials.");
@@ -72,18 +94,18 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label
-              htmlFor="email"
+              htmlFor="identifier"
               className="mb-2 block text-sm font-medium"
             >
-              Email
+              Username or Email
             </label>
 
             <input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              id="identifier"
+              type="text"
+              placeholder="username or email@example.com"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-blue-500 focus:outline-none"
               required
             />

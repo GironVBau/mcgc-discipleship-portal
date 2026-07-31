@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 export default function StaffLogin() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Email or Username
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -20,8 +20,29 @@ export default function StaffLogin() {
     setLoading(true);
     setErrorMessage("");
 
+    let loginEmail = identifier.trim();
+
+    // If input is not a valid email, look up the email by username in profiles
+    const isEmail = loginEmail.includes("@");
+    if (!isEmail) {
+      const { data: profile, error: userLookupError } = await supabase
+        .from("profiles")
+        .select("email")
+        .eq("username", loginEmail.toLowerCase())
+        .maybeSingle();
+
+      if (userLookupError || !profile?.email) {
+        setErrorMessage("Invalid username or email. Account not found.");
+        setLoading(false);
+        return;
+      }
+
+      loginEmail = profile.email;
+    }
+
+    // 1. Authenticate user credentials
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email,
+      email: loginEmail,
       password,
     });
 
@@ -31,29 +52,36 @@ export default function StaffLogin() {
       return;
     }
 
+    // 2. Fetch profile safely using maybeSingle() to prevent hard crashes
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", authData.user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
-      await supabase.auth.signOut();
-      setErrorMessage("Error retrieving user profile. Access denied.");
-      setLoading(false);
-      return;
+    if (profileError) {
+      console.warn("Profile table lookup issue, checking metadata fallback:", profileError.message);
     }
 
-    if (profile.role !== "teacher" && profile.role !== "admin") {
+    // 3. Resolve role from DB profile or JWT metadata fallback
+    const userRole = (
+      profile?.role || 
+      authData.user.user_metadata?.role || 
+      ""
+    ).toString().toLowerCase();
+
+    // 4. Validate staff access
+    if (userRole !== "teacher" && userRole !== "admin") {
       await supabase.auth.signOut();
       setErrorMessage("Access Denied: This portal is reserved for Teachers and Admins.");
       setLoading(false);
       return;
     }
 
+    // 5. Refresh middleware/router and navigate to correct dashboard
     router.refresh();
 
-    if (profile.role === "admin") {
+    if (userRole === "admin") {
       router.push("/dashboard/admin");
     } else {
       router.push("/dashboard/teacher");
@@ -62,9 +90,9 @@ export default function StaffLogin() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Background Accent Lines */}
+      {/* Background Lighting */}
       <div className="absolute top-1/4 -right-20 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -left-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 -left-20 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 space-y-6">
         
@@ -100,12 +128,12 @@ export default function StaffLogin() {
 
           <form onSubmit={handleStaffLogin} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Work Email</label>
+              <label className="text-xs font-semibold text-slate-300">Username or Email</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="staff@church.org"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="staff_username or staff@church.org"
                 required
                 className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all placeholder:text-slate-600"
               />
@@ -142,7 +170,7 @@ export default function StaffLogin() {
           </form>
         </div>
 
-        {/* Return Link */}
+        {/* Back Link */}
         <div className="text-center">
           <Link href="/" className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors">
             ← Return to Home Page

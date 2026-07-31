@@ -1,86 +1,147 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
+import { Check, ArrowRight, Loader2, Award } from "lucide-react";
 
 interface MarkAsStudiedButtonProps {
   lessonId: string;
   courseSlug: string;
-  initialIsStudied: boolean;
+  nextLessonSlug?: string | null;
+  isLastLesson?: boolean;
 }
 
 export default function MarkAsStudiedButton({
   lessonId,
   courseSlug,
-  initialIsStudied,
+  nextLessonSlug,
+  isLastLesson = false,
 }: MarkAsStudiedButtonProps) {
-  const [isStudied, setIsStudied] = useState(initialIsStudied);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const supabase = createClient();
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleToggleStudied = async () => {
-    setLoading(true);
-
-    try {
+  useEffect(() => {
+    async function checkStatus() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) {
-        alert('Please log in to track your progress.');
-        setLoading(false);
-        return;
+      if (user) {
+        const { data } = await supabase
+          .from("user_lesson_progress")
+          .select("completed")
+          .eq("user_id", user.id)
+          .eq("lesson_id", lessonId)
+          .maybeSingle();
+
+        if (data?.completed) {
+          setIsCompleted(true);
+        }
       }
-
-      const nextStatus = isStudied ? 'in_progress' : 'studied';
-
-      // Upsert record into student_lesson_progress
-      const { error } = await supabase.from('student_lesson_progress').upsert(
-        {
-          user_id: user.id,
-          lesson_id: lessonId,
-          status: nextStatus,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,lesson_id' }
-      );
-
-      if (error) throw error;
-
-      setIsStudied(!isStudied);
-      router.refresh(); // Refresh Server Components to update progress UI
-    } catch (err) {
-      console.error('Error updating status:', err);
-      alert('Failed to update progress. Please try again.');
-    } finally {
       setLoading(false);
     }
+
+    checkStatus();
+  }, [lessonId, supabase]);
+
+  const handleToggleComplete = async () => {
+    setSaving(true);
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      alert("Please sign in to save your lesson progress.");
+      setSaving(false);
+      return;
+    }
+
+    const nextState = !isCompleted;
+
+    const { error } = await supabase.from("user_lesson_progress").upsert(
+      {
+        user_id: user.id,
+        lesson_id: lessonId,
+        completed: nextState,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,lesson_id" }
+    );
+
+    if (error) {
+      console.error("Error updating lesson progress:", error.message);
+      alert("Failed to update progress. Please try again.");
+    } else {
+      setIsCompleted(nextState);
+    }
+    setSaving(false);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center space-x-2 text-xs text-slate-400 py-3">
+        <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+        <span>Loading status...</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="pt-6 border-t flex justify-end">
+    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
+      
+      {/* Complete / Unmark Toggle Button */}
       <button
-        onClick={handleToggleStudied}
-        disabled={loading}
-        className={`px-6 py-3 rounded-lg font-bold transition-all shadow-md flex items-center gap-2 ${
-          isStudied
-            ? 'bg-green-600 hover:bg-green-700 text-white'
-            : 'bg-blue-600 hover:bg-blue-700 text-white'
-        } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+        onClick={handleToggleComplete}
+        disabled={saving}
+        className={`px-5 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 border shadow-sm ${
+          isCompleted
+            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+            : "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600"
+        }`}
       >
-        {loading ? (
-          <span>Updating...</span>
-        ) : isStudied ? (
+        {saving ? (
+          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+        ) : isCompleted ? (
           <>
-            <span>✓</span>
-            <span>Marked as Studied</span>
+            <Check className="w-4 h-4 text-emerald-400" />
+            <span>Completed (Click to undo)</span>
           </>
         ) : (
           <span>Mark as Studied</span>
         )}
       </button>
+
+      {/* Navigation or Exam Action */}
+      <div className="flex items-center justify-end">
+        {isLastLesson || !nextLessonSlug ? (
+          /* Final Lesson Action: Route to Exam */
+          <Link
+            href={`/courses/${courseSlug}/exam`}
+            className={`w-full sm:w-auto px-6 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-2 transition-all shadow-md ${
+              isCompleted
+                ? "bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/10"
+                : "bg-slate-800 text-slate-500 border border-slate-700"
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>Finish & Go to Exam</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        ) : (
+          /* Standard Next Lesson Action */
+          <Link
+            href={`/courses/${courseSlug}/lessons/${nextLessonSlug}`}
+            className="w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-amber-400/10"
+          >
+            <span>Next Lesson</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        )}
+      </div>
+
     </div>
   );
 }

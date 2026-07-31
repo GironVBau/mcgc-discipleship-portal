@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import ContentProtection from '@/components/ContentProtection';
 import MarkAsStudiedButton from './MarkAsStudiedButton';
-import Navbar from '@/components/Navbar';
 
 interface PageProps {
   params: Promise<{
@@ -25,7 +24,7 @@ export default async function LessonPage({ params }: PageProps) {
   if (courseError || !course) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        <Navbar />
+       
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6">
             <h2 className="text-xl font-bold text-slate-900">Course Not Found</h2>
@@ -56,8 +55,8 @@ export default async function LessonPage({ params }: PageProps) {
   if (lessonError || !lesson) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center p-6">
+        
+                <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6">
             <h2 className="text-xl font-bold text-slate-900">Lesson Not Found</h2>
             <Link
@@ -72,7 +71,21 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
-  // 3. User Progress Tracking
+  // 3. Fetch Next Lesson (Queries lesson_number directly)
+  const { data: nextLesson } = await supabase
+    .from('lessons')
+    .select('lesson_number')
+    .eq('course_id', course.id)
+    .gt('lesson_number', lesson.lesson_number)
+    .order('lesson_number', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const nextLessonSlug = nextLesson 
+    ? `lesson-${nextLesson.lesson_number}` 
+    : null;
+
+  // 4. User Progress Tracking
   const { data: { user } } = await supabase.auth.getUser();
   let initialIsStudied = false;
   if (user) {
@@ -88,7 +101,7 @@ export default async function LessonPage({ params }: PageProps) {
     }
   }
 
-  // 4. Content Extractor Helper Function for Structured SQL Data
+  // 5. Content Extractor Helper Function for Structured SQL Data
   const rawPoints: string[] = lesson.teaching_points || [];
 
   const snapshot = rawPoints.find(p => p.startsWith('LESSON SNAPSHOT:'))?.replace('LESSON SNAPSHOT:', '').trim();
@@ -315,6 +328,7 @@ export default async function LessonPage({ params }: PageProps) {
             <MarkAsStudiedButton
               lessonId={lesson.id}
               courseSlug={courseSlug}
+              nextLessonSlug={nextLessonSlug}
               initialIsStudied={initialIsStudied}
             />
           </div>

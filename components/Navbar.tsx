@@ -1,10 +1,9 @@
-// components/Navbar.tsx
 import Image from "next/image";
 import Link from "next/link";
 
 export default function Navbar() {
   return (
-    <header className="w-full bg-white text-gray-900 px-6 py-4 flex items-center justify-between shadow-sm border-b border-slate-200 sticky top-0 z-50">
+    <header className="w-full bg-white text-slate-900 px-6 py-4 flex items-center justify-between shadow-sm border-b border-slate-200 sticky top-0 z-50">
       <Link href="/" className="flex items-center space-x-3">
         <Image
           src="/1080.png"
@@ -15,7 +14,7 @@ export default function Navbar() {
         />
         <div>
           <p className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Ministry of Christ's Great Commission
+            Ministry of Christ&apos;s Great Commission
           </p>
           <h1 className="text-sm sm:text-base font-bold leading-tight text-slate-900">
             Discipleship Portal

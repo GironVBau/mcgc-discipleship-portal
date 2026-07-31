@@ -103,9 +103,13 @@ export default function FoundationalExamPage() {
               <span className="text-xs text-slate-600 font-semibold">{q.points} {q.points === 1 ? 'Point' : 'Points'}</span>
             </div>
 
-            <p className="text-sm font-semibold text-slate-900 whitespace-pre-line">
-              {q.question_number}. {q.question_text}
-            </p>
+            {/* Rendered HTML via dangerouslySetInnerHTML */}
+            <p 
+              className="text-sm font-semibold text-slate-900 whitespace-pre-line [&>u]:underline [&>u]:decoration-2 [&>u]:underline-offset-4 [&>u]:font-bold [&>u]:text-[#1e2e68]"
+              dangerouslySetInnerHTML={{
+                __html: `${q.question_number}. ${q.question_text}`
+              }}
+            />
 
             {/* Part 1: Multiple Choice Options */}
             {q.part_number === 1 && q.options && (
