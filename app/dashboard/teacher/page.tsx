@@ -137,10 +137,10 @@ export default function TeacherDashboard() {
         }
 
       } catch (err) {
-        console.error("Unexpected error loading teacher dashboard:", err);
-      } font-medium {
-        setLoading(false);
-      }
+          console.error("Unexpected error loading teacher dashboard:", err);
+        } finally {
+          setLoading(false);
+        }
     }
 
     loadTeacherData();
