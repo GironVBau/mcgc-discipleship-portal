@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function StudentLoginPage() {
+function StudentLoginForm() {
   const [identifier, setIdentifier] = useState(""); // Email or Username
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -200,5 +200,19 @@ export default function StudentLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function StudentLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400 text-sm">
+          Loading login...
+        </div>
+      }
+    >
+      <StudentLoginForm />
+    </Suspense>
   );
 }
