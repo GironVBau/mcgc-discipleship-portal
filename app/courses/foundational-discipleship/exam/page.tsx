@@ -54,5 +54,5 @@ export default async function ExamPage() {
     redirect("/courses/foundational-discipleship");
   }
 
-  return <FoundationalExamPage />;
+  return <FoundationalExamPage courseId={course.id} userId={user.id} />;
 }
