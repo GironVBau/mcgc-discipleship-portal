@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
-import SpiritualGiftsForm from './SpiritualGiftsForm';
+import SpiritualGiftsForm from '@/components/SpiritualGiftsForm';
 
 export default async function SpiritualGiftsPage() {
   const supabase = await createClient();
@@ -10,7 +9,6 @@ export default async function SpiritualGiftsPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        <Navbar />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 text-center space-y-4">
             <h2 className="text-xl font-bold text-slate-900">Authentication Required</h2>
@@ -56,7 +54,6 @@ export default async function SpiritualGiftsPage() {
   if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        <Navbar />
         <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-16 flex items-center">
           <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200 shadow-sm text-center space-y-6 w-full">
             <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center mx-auto text-amber-600 text-2xl">
@@ -105,7 +102,6 @@ export default async function SpiritualGiftsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      <Navbar />
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-10 space-y-8">
         <header className="bg-[#1e2e68] rounded-3xl p-8 text-white space-y-2">
           <span className="text-xs font-semibold uppercase tracking-wider bg-blue-500/20 text-blue-200 px-3 py-1 rounded-full border border-blue-400/30">
