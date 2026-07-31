@@ -10,6 +10,7 @@ interface MarkAsStudiedButtonProps {
   courseSlug: string;
   nextLessonSlug?: string | null;
   isLastLesson?: boolean;
+  initialIsStudied?: boolean; // <-- Added to satisfy TypeScript
 }
 
 export default function MarkAsStudiedButton({
@@ -17,9 +18,10 @@ export default function MarkAsStudiedButton({
   courseSlug,
   nextLessonSlug,
   isLastLesson = false,
+  initialIsStudied = false, // <-- Destructured with default fallback
 }: MarkAsStudiedButtonProps) {
   const supabase = createClient();
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(initialIsStudied);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -37,8 +39,8 @@ export default function MarkAsStudiedButton({
           .eq("lesson_id", lessonId)
           .maybeSingle();
 
-        if (data?.completed) {
-          setIsCompleted(true);
+        if (data?.completed !== undefined) {
+          setIsCompleted(data.completed);
         }
       }
       setLoading(false);
