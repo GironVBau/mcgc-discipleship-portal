@@ -20,7 +20,12 @@ interface QuestionItem {
   correct_answer: string | null;
 }
 
-export default function FoundationalExamPage() {
+interface ExamClientProps {
+  courseId: string;
+  userId: string;
+}
+
+export default function ExamClient({ courseId, userId }: ExamClientProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -30,66 +35,9 @@ export default function FoundationalExamPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // 🛡️ Guard & Fetch Questions
+  // Fetch Questions (Server already verified authorization)
   useEffect(() => {
-    async function loadAndVerify() {
-      // 1. Get authenticated user
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-
-      // 2. Fetch Course ID
-      const { data: course } = await supabase
-        .from('courses')
-        .select('id')
-        .eq('slug', COURSE_SLUG)
-        .single();
-
-      if (!course) {
-        router.replace('/courses');
-        return;
-      }
-
-      // 3. Check Lesson Completion
-      const { data: level1Lessons } = await supabase
-        .from('lessons')
-        .select('id')
-        .eq('course_id', course.id);
-
-      let allLessonsCompleted = false;
-      if (level1Lessons && level1Lessons.length > 0) {
-        const lessonIds = level1Lessons.map((l) => l.id);
-        const { data: completedProgress } = await supabase
-          .from('user_lesson_progress')
-          .select('lesson_id')
-          .eq('user_id', user.id)
-          .eq('completed', true)
-          .in('lesson_id', lessonIds);
-
-        allLessonsCompleted = (completedProgress?.length ?? 0) === level1Lessons.length;
-      }
-
-      // 4. Check Teacher/Admin Approval in `exam_approvals`
-      const { data: approval } = await supabase
-        .from('exam_approvals') // 👈 adjust table name if needed
-        .select('is_approved')
-        .eq('user_id', user.id)
-        .eq('course_id', course.id)
-        .maybeSingle();
-
-      const isApproved = !!approval?.is_approved;
-
-      // 🚫 Block access if lessons incomplete OR approval missing
-      if (!allLessonsCompleted || !isApproved) {
-        alert('Access Denied: You must complete all lessons and receive teacher approval before taking this exam.');
-        router.replace('/courses');
-        return;
-      }
-
-      // 5. If verified, load exam questions
+    async function loadQuestions() {
       const { data: questionData, error } = await supabase
         .from('exam_questions')
         .select('*')
@@ -105,8 +53,8 @@ export default function FoundationalExamPage() {
       setLoading(false);
     }
 
-    loadAndVerify();
-  }, []);
+    loadQuestions();
+  }, [supabase]);
 
   // 90-Minute Timer with auto-submit
   useEffect(() => {
@@ -168,7 +116,7 @@ export default function FoundationalExamPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600 font-medium">
-        Verifying authorization & loading assessment...
+        Loading assessment questions...
       </div>
     );
   }
@@ -307,7 +255,7 @@ export default function FoundationalExamPage() {
         {/* Submit Action Button */}
         <button
           onClick={handleSubmit}
-          disabled={isSubmitting}
+        disabled={isSubmitting}
           className="w-full bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-extrabold py-4 rounded-2xl shadow-lg transition-all text-base mt-6 disabled:opacity-60"
         >
           {isSubmitting
