@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import Image from "next/image";
@@ -27,7 +27,6 @@ interface CourseData {
   title: string;
   description: string;
   slug: string;
-  level: number;
 }
 
 interface LessonData {
@@ -66,6 +65,93 @@ export default function StudentDashboard() {
   const [studentNote, setStudentNote] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
 
+  const loadStudentData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const savedNote = localStorage.getItem("mcgc_student_reflection_note");
+      if (savedNote) setStudentNote(savedNote);
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Primary parallel fetches
+      const [
+        { data: profile },
+        { data: coursesData },
+        { data: certsData }
+      ] = await Promise.all([
+        supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+        supabase.from("courses").select("id, title, description, slug"),
+        supabase.from("user_certificates").select("id, course_name, issued_at").eq("user_id", user.id)
+      ]);
+
+      if (profile) setUserProfile(profile);
+      if (certsData) setCertificates(certsData);
+
+      if (coursesData && coursesData.length > 0) {
+        // Query courses dynamically by slug
+        const l1 = coursesData.find((c) => c.slug === "foundational-discipleship") || coursesData[0];
+        const l2 = coursesData.find((c) => c.slug === "leadership-discipleship") || null;
+
+        setLevel1Course(l1);
+        setLevel2Course(l2);
+
+        if (l1) {
+          // Level 1 dependent queries
+          const [
+            { data: lessonsData },
+            { data: examData }
+          ] = await Promise.all([
+            supabase
+              .from("lessons")
+              .select("id, lesson_number, title")
+              .eq("course_id", l1.id)
+              .order("lesson_number", { ascending: true }),
+
+            supabase
+              .from("user_exam_results")
+              .select("passed")
+              .eq("user_id", user.id)
+              .eq("course_id", l1.id)
+              .eq("passed", true)
+              .maybeSingle()
+          ]);
+
+          const l1Lessons = lessonsData || [];
+          setLessons(l1Lessons);
+
+          const lessonIds = l1Lessons.map((l) => l.id);
+
+          // Fetch exact user progress for Level 1 lessons
+          if (lessonIds.length > 0) {
+            const { data: progressData } = await supabase
+              .from("user_lesson_progress")
+              .select("*")
+              .eq("user_id", user.id)
+              .in("lesson_id", lessonIds);
+
+            if (progressData) {
+              const completedIds = progressData
+                .filter((p) => p.completed === true || p.is_completed === true)
+                .map((p) => p.lesson_id);
+
+              setCompletedLessonIds(new Set(completedIds));
+            }
+          }
+
+          if (examData?.passed) {
+            setHasPassedLevel1Exam(true);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error loading dashboard data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     setMounted(true);
     const now = new Date();
@@ -76,80 +162,17 @@ export default function StudentDashboard() {
       setCurrentTime(new Date());
     }, 1000);
 
-    async function loadStudentData() {
-      try {
-        const savedNote = localStorage.getItem("mcgc_student_reflection_note");
-        if (savedNote) setStudentNote(savedNote);
-
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Run primary independent requests in parallel
-        const [
-          { data: profile },
-          { data: coursesData },
-          { data: certsData }
-        ] = await Promise.all([
-          supabase.from("profiles").select("full_name").eq("id", user.id).single(),
-          supabase.from("courses").select("*").order("level", { ascending: true }),
-          supabase.from("user_certificates").select("id, course_name, issued_at").eq("user_id", user.id)
-        ]);
-
-        if (profile) setUserProfile(profile);
-        if (certsData) setCertificates(certsData);
-
-        if (coursesData && coursesData.length > 0) {
-          const l1 = coursesData.find((c) => c.level === 1) || coursesData[0];
-          const l2 = coursesData.find((c) => c.level === 2) || null;
-
-          setLevel1Course(l1);
-          setLevel2Course(l2);
-
-          if (l1) {
-            // Run Level 1 dependent queries in parallel
-            const [
-              { data: lessonsData },
-              { data: progressData },
-              { data: examData }
-            ] = await Promise.all([
-              supabase
-                .from("lessons")
-                .select("id, lesson_number, title")
-                .eq("course_id", l1.id)
-                .order("lesson_number", { ascending: true }),
-              supabase
-                .from("user_lesson_progress")
-                .select("lesson_id")
-                .eq("user_id", user.id)
-                .eq("completed", true),
-              supabase
-                .from("user_exam_results")
-                .select("passed")
-                .eq("user_id", user.id)
-                .eq("course_id", l1.id)
-                .eq("passed", true)
-                .maybeSingle()
-            ]);
-
-            if (lessonsData) setLessons(lessonsData);
-            if (progressData) {
-              setCompletedLessonIds(new Set(progressData.map((p) => p.lesson_id)));
-            }
-            if (examData?.passed) {
-              setHasPassedLevel1Exam(true);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Error loading dashboard data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadStudentData();
-    return () => clearInterval(timer);
-  }, []);
+
+    // Re-fetch data whenever user navigates back to tab
+    const handleFocus = () => loadStudentData();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [loadStudentData]);
 
   const handleSaveNote = () => {
     localStorage.setItem("mcgc_student_reflection_note", studentNote);
@@ -264,28 +287,38 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* Dynamic Quick Stats */}
+        {/* Dynamic Quick Stats (Interactive Links) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4">
-            <div className="p-3 bg-amber-400/10 border border-amber-400/20 rounded-xl text-amber-400">
+          
+          {/* Level 1 Status Card */}
+          <Link 
+            href={level1Course ? `/courses/${level1Course.slug}` : "#"} 
+            className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4 hover:border-amber-400/50 transition-all cursor-pointer group"
+          >
+            <div className="p-3 bg-amber-400/10 border border-amber-400/20 rounded-xl text-amber-400 group-hover:scale-105 transition-transform">
               <BookOpen className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Level 1 Status</p>
               <p className="text-base font-bold text-amber-400">{courseStatus}</p>
             </div>
-          </div>
+          </Link>
 
-          <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4">
-            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
+          {/* Lesson Progress Card */}
+          <Link 
+            href={nextLesson && level1Course ? `/courses/${level1Course.slug}/lessons/lesson-${nextLesson.lesson_number}` : "#"} 
+            className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4 hover:border-blue-500/50 transition-all cursor-pointer group"
+          >
+            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400 group-hover:scale-105 transition-transform">
               <Clock className="w-6 h-6" />
             </div>
             <div>
               <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Lesson Progress</p>
               <p className="text-base font-bold text-white">{progressPercentage}% Completed</p>
             </div>
-          </div>
+          </Link>
 
+          {/* Certificates Card */}
           <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4">
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
               <Award className="w-6 h-6" />
@@ -378,9 +411,10 @@ export default function StudentDashboard() {
                       const isCompleted = completedLessonIds.has(lesson.id);
 
                       return (
-                        <div
+                        <Link
                           key={lesson.id}
-                          className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                          href={`/courses/${level1Course.slug}/lessons/lesson-${lesson.lesson_number}`}
+                          className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all hover:border-slate-600 ${
                             isCompleted
                               ? "bg-emerald-500/5 border-emerald-500/20"
                               : "bg-slate-950/40 border-slate-800/60"
@@ -402,7 +436,7 @@ export default function StudentDashboard() {
                               Pending
                             </span>
                           )}
-                        </div>
+                        </Link>
                       );
                     })}
                   </div>
@@ -464,199 +498,138 @@ export default function StudentDashboard() {
                 ) : (
                   <button
                     disabled
-                    className="inline-flex items-center gap-2 bg-slate-800 text-slate-500 font-semibold text-xs px-5 py-2.5 rounded-xl cursor-not-allowed border border-slate-700"
+                    className="inline-flex items-center gap-2 bg-slate-800 text-slate-500 font-bold text-xs px-5 py-2.5 rounded-xl cursor-not-allowed"
                   >
-                    <Lock className="w-4 h-4" />
-                    <span>Exam Locked</span>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Complete Lessons to Unlock</span>
                   </button>
                 )}
               </div>
             </div>
 
-            {/* LEVEL 2: Fundamental Course (GATED) */}
-            <div className={`rounded-3xl p-6 sm:p-8 border backdrop-blur-xl transition-all ${
-              hasPassedLevel1Exam 
-                ? "bg-slate-900/60 border-slate-800 shadow-xl" 
-                : "bg-slate-950/40 border-slate-900/80 opacity-60"
-            }`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2.5 py-1 rounded-full">
-                    Level 2
-                  </span>
-                  <h3 className="text-lg font-bold text-white pt-2">
-                    {level2Course ? level2Course.title : "Fundamental Course"}
+            {/* LEVEL 2: Locked Gated Card */}
+            {level2Course && (
+              <div className={`border rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-4 shadow-xl ${
+                hasPassedLevel1Exam
+                  ? "bg-slate-900/60 border-slate-800"
+                  : "bg-slate-950/40 border-slate-800/40 opacity-70"
+              }`}>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                    <BookOpen className="w-4 h-4 text-slate-400" />
+                    <span>Level 2: {level2Course.title}</span>
                   </h3>
+
+                  {hasPassedLevel1Exam ? (
+                    <span className="text-xs bg-emerald-500/10 text-emerald-400 font-bold px-3 py-1 rounded-full border border-emerald-500/20">
+                      Unlocked
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-slate-900 text-slate-500 font-bold px-3 py-1 rounded-full border border-slate-800 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Locked
+                    </span>
+                  )}
                 </div>
 
-                {!hasPassedLevel1Exam && (
-                  <span className="text-xs bg-slate-800/80 text-slate-400 font-bold px-3 py-1.5 rounded-xl flex items-center gap-1 border border-slate-700">
-                    <Lock className="w-3.5 h-3.5" /> Pass Level 1 Exam First
-                  </span>
-                )}
-              </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {level2Course.description}
+                </p>
 
-              <p className="text-xs text-slate-400 leading-relaxed pt-2">
-                {level2Course?.description || "Deepen your faith and study essential doctrines after completing Level 1."}
-              </p>
-
-              <div className="pt-4">
-                {hasPassedLevel1Exam && level2Course ? (
+                {hasPassedLevel1Exam && (
                   <Link
                     href={`/courses/${level2Course.slug}`}
                     className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all"
                   >
-                    <span>Start Level 2 Course</span>
+                    <span>Start Level 2</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
-                ) : (
-                  <button
-                    disabled
-                    className="inline-flex items-center gap-2 bg-slate-900 text-slate-600 font-semibold text-xs px-5 py-2.5 rounded-xl cursor-not-allowed border border-slate-800"
-                  >
-                    <Lock className="w-4 h-4" />
-                    <span>Locked</span>
-                  </button>
                 )}
               </div>
-            </div>
-
-            {/* Reflection Pad */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-4 shadow-xl">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-bold text-white flex items-center space-x-2">
-                  <StickyNote className="w-4 h-4 text-amber-400" />
-                  <span>My Discipleship Reflection Pad</span>
-                </h3>
-                <button
-                  onClick={handleSaveNote}
-                  className="bg-slate-800 hover:bg-slate-700 text-amber-400 px-3 py-1.5 rounded-xl text-xs font-semibold border border-slate-700 transition-all flex items-center space-x-1.5"
-                >
-                  {noteSaved ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Save className="w-3.5 h-3.5" />}
-                  <span>{noteSaved ? "Saved!" : "Save Note"}</span>
-                </button>
-              </div>
-
-              <textarea
-                value={studentNote}
-                onChange={(e) => setStudentNote(e.target.value)}
-                placeholder="Write your study notes, scripture reflections, or questions for your instructor..."
-                rows={4}
-                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400/50 resize-none transition-all"
-              />
-            </div>
+            )}
 
           </div>
 
-          {/* Right Column */}
+          {/* Sidebar Tools Column */}
           <div className="space-y-6">
             
-            {/* Interactive Dynamic Calendar & Real-Time Clock */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-5 shadow-xl">
-              
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                  <CalendarIcon className="w-4 h-4 text-amber-400" />
-                  <span>Interactive Calendar</span>
-                </h3>
-
-                {currentTime && (
-                  <span className="text-[11px] font-mono font-semibold text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-lg border border-amber-400/20">
-                    {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                )}
-              </div>
-
-              {/* Month Navigation */}
+            {/* Interactive Calendar Widget */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-slate-200">
-                  {calendarDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-                </p>
+                <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                  <CalendarIcon className="w-4 h-4 text-amber-400" />
+                  <span>{calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}</span>
+                </div>
                 <div className="flex items-center space-x-1">
-                  <button
-                    onClick={handlePrevMonth}
-                    className="p-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-all"
-                    title="Previous Month"
-                  >
+                  <button onClick={handlePrevMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={handleNextMonth}
-                    className="p-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-all"
-                    title="Next Month"
-                  >
+                  <button onClick={handleNextMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
+              {/* Days Header */}
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-500">
+                {daysOfWeek.map((day) => (
+                  <div key={day}>{day}</div>
+                ))}
+              </div>
+
               {/* Calendar Grid */}
-              <div className="space-y-2">
-                <div className="grid grid-cols-7 text-center text-[10px] font-bold text-slate-500 uppercase">
-                  {daysOfWeek.map((day) => (
-                    <div key={day} className="py-1">{day}</div>
-                  ))}
-                </div>
+              <div className="grid grid-cols-7 gap-1 text-xs">
+                {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+                  <div key={`empty-${i}`} />
+                ))}
 
-                <div className="grid grid-cols-7 text-center text-xs gap-1">
-                  {Array.from({ length: firstDayOfMonth }).map((_, index) => (
-                    <div key={`empty-${index}`} className="py-2 text-transparent">-</div>
-                  ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const dayNum = i + 1;
+                  const isToday = isCurrentMonth && today.getDate() === dayNum;
 
-                  {Array.from({ length: daysInMonth }).map((_, index) => {
-                    const dayNum = index + 1;
-                    const isToday = isCurrentMonth && dayNum === today.getDate();
-
-                    return (
-                      <div
-                        key={dayNum}
-                        className={`py-2 rounded-xl text-xs font-medium transition-all ${
-                          isToday
-                            ? "bg-amber-400 text-slate-950 font-extrabold shadow-md shadow-amber-400/20 scale-105"
-                            : "text-slate-300 hover:bg-slate-800/80"
-                        }`}
-                      >
-                        {dayNum}
-                      </div>
-                    );
-                  })}
-                </div>
+                  return (
+                    <div
+                      key={dayNum}
+                      className={`h-7 flex items-center justify-center rounded-lg font-medium transition-colors ${
+                        isToday
+                          ? "bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20"
+                          : "text-slate-300 hover:bg-slate-800"
+                      }`}
+                    >
+                      {dayNum}
+                    </div>
+                  );
+                })}
               </div>
-
-              <div className="pt-2 border-t border-slate-800/60 text-center">
-                <span className="text-[11px] text-slate-400">
-                  Today is <strong className="text-slate-200">{today.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })}</strong>
-                </span>
-              </div>
-
             </div>
 
-            {/* Certificates Box */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4 shadow-xl">
-              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Award className="w-4 h-4 text-amber-400" />
-                <span>Certificates & Badges</span>
-              </h3>
-
-              {hasPassedLevel1Exam || certificates.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-white">Level 1: Foundational Certificate</p>
-                      <p className="text-[10px] text-emerald-400 font-semibold">Passed Examination</p>
-                    </div>
-                    <Link 
-                      href="/certificates/level-1"
-                      className="text-amber-400 hover:text-amber-300 p-2 rounded-lg bg-amber-400/10 border border-amber-400/20 transition-colors"
-                      title="View Certificate"
-                    >
-                      <FileText className="w-4 h-4" />
-                    </Link>
-                  </div>
+            {/* Personal Reflections Notepad Widget */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-3 shadow-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                  <StickyNote className="w-4 h-4 text-amber-400" />
+                  <span>Discipleship Notes</span>
                 </div>
-              ) : (
-                <p className="text-xs text-slate-500 italic">No certificates unlocked yet. Complete Level 1 lessons and pass the final exam!</p>
-              )}
+                {noteSaved && (
+                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Saved
+                  </span>
+                )}
+              </div>
+
+              <textarea
+                value={studentNote}
+                onChange={(e) => setStudentNote(e.target.value)}
+                placeholder="Write your prayers, reflections, or takeaways here..."
+                className="w-full h-28 bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-400/50 resize-none"
+              />
+
+              <button
+                onClick={handleSaveNote}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs py-2 rounded-xl transition-all flex items-center justify-center space-x-1.5"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Reflections</span>
+              </button>
             </div>
 
           </div>
