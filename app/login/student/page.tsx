@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-export default function StudentLogin() {
+export default function StudentLoginPage() {
   const [identifier, setIdentifier] = useState(""); // Email or Username
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -22,37 +22,53 @@ export default function StudentLogin() {
     setLoading(true);
     setErrorMessage("");
 
-    let loginEmail = identifier.trim();
+    let loginEmail = identifier.trim().toLowerCase();
 
-    // Look up email by username if input isn't formatted as an email
+    // 1. Look up email by username if input is not formatted as an email
     const isEmail = loginEmail.includes("@");
     if (!isEmail) {
-      const { data: profile, error: userLookupError } = await supabase
+      const { data: profile } = await supabase
         .from("profiles")
         .select("email")
-        .eq("username", loginEmail.toLowerCase())
+        .eq("username", loginEmail)
         .maybeSingle();
 
-      if (userLookupError || !profile?.email) {
-        setErrorMessage("Invalid username or email. Account not found.");
-        setLoading(false);
-        return;
+      if (profile?.email) {
+        loginEmail = profile.email;
       }
-
-      loginEmail = profile.email;
     }
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password,
-    });
+    // 2. Check if user is pending admin approval before checking auth
+    const { data: pendingUser } = await supabase
+      .from("pending_enrollees")
+      .select("id")
+      .or(`email.eq.${loginEmail},username.eq.${loginEmail}`)
+      .maybeSingle();
 
-    if (authError || !authData.user) {
-      setErrorMessage(authError?.message || "Invalid credentials. Please try again.");
+    if (pendingUser) {
+      setErrorMessage(
+        "Your enrollment request is pending approval by an administrator."
+      );
       setLoading(false);
       return;
     }
 
+    // 3. Authenticate user credentials
+    const { data: authData, error: authError } =
+      await supabase.auth.signInWithPassword({
+        email: loginEmail,
+        password,
+      });
+
+    if (authError || !authData.user) {
+      setErrorMessage(
+        authError?.message || "Invalid credentials. Please try again."
+      );
+      setLoading(false);
+      return;
+    }
+
+    // 4. Verify role
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
@@ -61,7 +77,9 @@ export default function StudentLogin() {
 
     if (profile?.role !== "student") {
       await supabase.auth.signOut();
-      setErrorMessage("Access Denied: This portal is for students only. Please use Staff Sign In.");
+      setErrorMessage(
+        "Access Denied: This portal is for students only. Please use Staff Sign In."
+      );
       setLoading(false);
       return;
     }
@@ -77,14 +95,17 @@ export default function StudentLogin() {
       <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 space-y-6">
-        
         {/* Header */}
         <div className="text-center space-y-2">
           <span className="text-xs font-bold uppercase tracking-widest text-amber-400 bg-amber-400/10 px-3.5 py-1.5 rounded-full border border-amber-400/20">
             MCGC Discipleship Platform
           </span>
-          <h1 className="text-3xl font-extrabold text-white tracking-tight pt-2">Welcome Back</h1>
-          <p className="text-sm text-slate-400">Sign in to continue your spiritual learning journey</p>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight pt-2">
+            Welcome Back
+          </h1>
+          <p className="text-sm text-slate-400">
+            Sign in to continue your spiritual learning journey
+          </p>
         </div>
 
         {/* Tab Switcher */}
@@ -110,7 +131,9 @@ export default function StudentLogin() {
 
           <form onSubmit={handleStudentLogin} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Username or Email</label>
+              <label className="text-xs font-semibold text-slate-300">
+                Username or Email
+              </label>
               <input
                 type="text"
                 value={identifier}
@@ -122,7 +145,9 @@ export default function StudentLogin() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Password</label>
+              <label className="text-xs font-semibold text-slate-300">
+                Password
+              </label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
@@ -154,7 +179,10 @@ export default function StudentLogin() {
           <div className="pt-2 text-center">
             <p className="text-xs text-slate-400">
               Need an account?{" "}
-              <Link href="/enroll" className="text-amber-400 font-bold hover:underline">
+              <Link
+                href="/enroll"
+                className="text-amber-400 font-bold hover:underline"
+              >
                 Enroll Now
               </Link>
             </p>
@@ -163,11 +191,13 @@ export default function StudentLogin() {
 
         {/* Back Link */}
         <div className="text-center">
-          <Link href="/" className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors">
+          <Link
+            href="/"
+            className="text-xs font-semibold text-slate-500 hover:text-slate-300 transition-colors"
+          >
             ← Return to Home Page
           </Link>
         </div>
-
       </div>
     </div>
   );

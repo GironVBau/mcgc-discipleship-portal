@@ -11,47 +11,40 @@ import {
   Users, 
   LogOut, 
   GraduationCap, 
-  Search,
   ChevronRight,
   Send,
   MessageSquare,
   AlertCircle
 } from "lucide-react";
 
+interface SubmissionReview {
+  id: string;
+  student_name: string;
+  course_title: string;
+  lesson_title: string;
+  submitted_at: string;
+  essay_text: string;
+  status: string;
+}
+
 export default function TeacherDashboard() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [teacherProfile, setTeacherProfile] = useState<{ full_name: string } | null>(null);
 
-  // Active essay review modal / state (Step 8)
-  const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
+  const [selectedSubmission, setSelectedSubmission] = useState<SubmissionReview | null>(null);
   const [scoreInput, setScoreInput] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
-
-  // Mocked Pending Reviews (Step 8: Teacher Review Essays and Submissions)
-  const [pendingReviews, setPendingReviews] = useState([
-    {
-      id: "sub-101",
-      studentName: "Michael Chang",
-      course: "Foundations of Faith (Book 1)",
-      lesson: "Lesson 3 Activity: Reflection on Living by the Word",
-      submittedDate: "Jul 30, 2026",
-      essayText: "Living by the Word means making scripture the active daily guide for my decisions rather than just passive reading...",
-    },
-    {
-      id: "sub-102",
-      studentName: "Sarah Jenkins",
-      course: "Christian Growth 101",
-      lesson: "Final Exam Essay: The Great Commission in Practice",
-      submittedDate: "Jul 31, 2026",
-      essayText: "In my local community, applying the Great Commission looks like building authentic relationships and sharing God's grace...",
-    }
-  ]);
+  const [pendingReviews, setPendingReviews] = useState<SubmissionReview[]>([]);
 
   useEffect(() => {
     async function loadTeacherData() {
+      setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (user) {
+        // Fetch Teacher Profile
         const { data: profile } = await supabase
           .from("profiles")
           .select("full_name")
@@ -59,21 +52,74 @@ export default function TeacherDashboard() {
           .single();
         
         setTeacherProfile(profile);
+
+        // Fetch Pending Essay/Activity Submissions awaiting Teacher Review (Step 8)
+        const { data: reviews } = await supabase
+          .from("essay_submissions")
+          .select(`
+            id,
+            essay_text,
+            created_at,
+            status,
+            profiles!essay_submissions_student_id_fkey (full_name),
+            lessons (
+              title,
+              courses (title)
+            )
+          `)
+          .eq("status", "pending_teacher_review")
+          .order("created_at", { ascending: true });
+
+        if (reviews) {
+          const formattedReviews: SubmissionReview[] = reviews.map((item: any) => ({
+            id: item.id,
+            student_name: item.profiles?.full_name || "Unknown Student",
+            course_title: item.lessons?.courses?.title || "Discipleship Course",
+            lesson_title: item.lessons?.title || "Workbook Lesson",
+            submitted_at: new Date(item.created_at).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+              year: "numeric"
+            }),
+            essay_text: item.essay_text,
+            status: item.status
+          }));
+          setPendingReviews(formattedReviews);
+        }
       }
       setLoading(false);
     }
+
     loadTeacherData();
   }, []);
 
-  const handleSubmitScore = (e: React.FormEvent) => {
+  const handleSubmitScore = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSubmission) return;
 
-    // Remove from local queue upon scoring (Pass to Admin Approval Workflow Step 9)
-    setPendingReviews((prev) => prev.filter((item) => item.id !== selectedSubmission.id));
-    setSelectedSubmission(null);
-    setScoreInput("");
-    setFeedbackInput("");
+    setSubmitting(true);
+
+    // Update submission status to 'pending_admin_approval' (Transition from Step 8 -> Step 9)
+    const { error } = await supabase
+      .from("essay_submissions")
+      .update({
+        score: scoreInput,
+        teacher_feedback: feedbackInput,
+        status: "pending_admin_approval", // Passes control to Admin Workflow
+        reviewed_at: new Date().toISOString()
+      })
+      .eq("id", selectedSubmission.id);
+
+    if (!error) {
+      setPendingReviews((prev) => prev.filter((item) => item.id !== selectedSubmission.id));
+      setSelectedSubmission(null);
+      setScoreInput("");
+      setFeedbackInput("");
+    } else {
+      alert("Error submitting score: " + error.message);
+    }
+
+    setSubmitting(false);
   };
 
   const handleSignOut = async () => {
@@ -149,7 +195,7 @@ export default function TeacherDashboard() {
               Instructor Dashboard
             </h1>
             <p className="text-slate-400 text-xs sm:text-sm mt-1">
-              Review student workbook submissions, evaluate essays, and submit scores for approval.
+              Review student workbook submissions, evaluate essays, and submit scores for admin approval.
             </p>
           </div>
         </div>
@@ -171,8 +217,8 @@ export default function TeacherDashboard() {
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Reviewed This Week</p>
-              <p className="text-xl font-bold text-white">14 Evaluated</p>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Status</p>
+              <p className="text-xl font-bold text-white">Step 8 Active</p>
             </div>
           </div>
 
@@ -181,8 +227,8 @@ export default function TeacherDashboard() {
               <Users className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Assigned Students</p>
-              <p className="text-xl font-bold text-white">24 Mentees</p>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Target Flow</p>
+              <p className="text-xl font-bold text-white">Step 9 Hand-off</p>
             </div>
           </div>
         </div>
@@ -215,16 +261,16 @@ export default function TeacherDashboard() {
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/60 pb-3">
                       <div>
-                        <p className="text-sm font-bold text-white">{item.studentName}</p>
-                        <p className="text-xs text-amber-400 font-medium">{item.course}</p>
+                        <p className="text-sm font-bold text-white">{item.student_name}</p>
+                        <p className="text-xs text-amber-400 font-medium">{item.course_title}</p>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-mono">Submitted: {item.submittedDate}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">Submitted: {item.submitted_at}</span>
                     </div>
 
                     <div className="py-3">
-                      <p className="text-xs font-semibold text-slate-300 mb-1">{item.lesson}</p>
-                      <p className="text-xs text-slate-400 line-clamp-2 italic bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
-                        "{item.essayText}"
+                      <p className="text-xs font-semibold text-slate-300 mb-1">{item.lesson_title}</p>
+                      <p className="text-xs text-slate-400 line-clamp-3 italic bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+                        "{item.essay_text}"
                       </p>
                     </div>
 
@@ -265,8 +311,8 @@ export default function TeacherDashboard() {
                 <form onSubmit={handleSubmitScore} className="space-y-4">
                   <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
                     <p className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Evaluating Student</p>
-                    <p className="text-sm font-bold text-white">{selectedSubmission.studentName}</p>
-                    <p className="text-xs text-slate-400">{selectedSubmission.lesson}</p>
+                    <p className="text-sm font-bold text-white">{selectedSubmission.student_name}</p>
+                    <p className="text-xs text-slate-400">{selectedSubmission.lesson_title}</p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -299,10 +345,11 @@ export default function TeacherDashboard() {
                   <div className="pt-2 flex items-center space-x-2">
                     <button
                       type="submit"
-                      className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-emerald-500/10"
+                      disabled={submitting}
+                      className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-extrabold py-3 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-emerald-500/10"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Submit Score to Admin</span>
+                      <span>{submitting ? "Submitting..." : "Submit Score to Admin"}</span>
                     </button>
                   </div>
                 </form>

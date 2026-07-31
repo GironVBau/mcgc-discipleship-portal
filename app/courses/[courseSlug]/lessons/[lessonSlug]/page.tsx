@@ -126,8 +126,7 @@ export default async function LessonPage({ params }: PageProps) {
   return (
     <ContentProtection>
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased">
-        <Navbar />
-
+        
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
           {/* Breadcrumb Header */}
           <nav className="flex items-center gap-2 text-xs font-semibold text-slate-500">

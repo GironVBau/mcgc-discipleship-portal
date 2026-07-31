@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import Image from "next/image";
@@ -58,103 +58,93 @@ export default function StudentDashboard() {
   const [certificates, setCertificates] = useState<CertificateData[]>([]);
 
   // Real-time Clock & Calendar state
+  const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
-  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarDate, setCalendarDate] = useState<Date>(new Date());
 
   // Notes state
   const [studentNote, setStudentNote] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
 
   useEffect(() => {
-    // Live clock timer update every second
-    setCurrentTime(new Date());
+    setMounted(true);
+    const now = new Date();
+    setCalendarDate(now);
+    setCurrentTime(now);
+
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
 
     async function loadStudentData() {
-      // Restore reflection note
-      const savedNote = localStorage.getItem("mcgc_student_reflection_note");
-      if (savedNote) {
-        setStudentNote(savedNote);
-      }
+      try {
+        const savedNote = localStorage.getItem("mcgc_student_reflection_note");
+        if (savedNote) setStudentNote(savedNote);
 
-      // Fetch user profile
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("full_name")
-          .eq("id", user.id)
-          .single();
-        
-        setUserProfile(profile);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
 
-        // 1. Fetch Courses for Level 1 and Level 2
-        const { data: coursesData } = await supabase
-          .from("courses")
-          .select("*")
-          .order("level", { ascending: true });
+        // Run primary independent requests in parallel
+        const [
+          { data: profile },
+          { data: coursesData },
+          { data: certsData }
+        ] = await Promise.all([
+          supabase.from("profiles").select("full_name").eq("id", user.id).single(),
+          supabase.from("courses").select("*").order("level", { ascending: true }),
+          supabase.from("user_certificates").select("id, course_name, issued_at").eq("user_id", user.id)
+        ]);
 
-        if (coursesData) {
+        if (profile) setUserProfile(profile);
+        if (certsData) setCertificates(certsData);
+
+        if (coursesData && coursesData.length > 0) {
           const l1 = coursesData.find((c) => c.level === 1) || coursesData[0];
-          const l2 = coursesData.find((c) => c.level === 2);
+          const l2 = coursesData.find((c) => c.level === 2) || null;
 
           setLevel1Course(l1);
-          setLevel2Course(l2 || null);
+          setLevel2Course(l2);
 
-          // Fetch Lessons and Progress for Level 1 Course
           if (l1) {
-            const { data: lessonsData } = await supabase
-              .from("lessons")
-              .select("id, lesson_number, title")
-              .eq("course_id", l1.id)
-              .order("lesson_number", { ascending: true });
-
-            if (lessonsData && lessonsData.length > 0) {
-              setLessons(lessonsData);
-
-              // Fetch completed lessons for current user in Level 1
-              const lessonIds = lessonsData.map((l) => l.id);
-              const { data: progressData } = await supabase
+            // Run Level 1 dependent queries in parallel
+            const [
+              { data: lessonsData },
+              { data: progressData },
+              { data: examData }
+            ] = await Promise.all([
+              supabase
+                .from("lessons")
+                .select("id, lesson_number, title")
+                .eq("course_id", l1.id)
+                .order("lesson_number", { ascending: true }),
+              supabase
                 .from("user_lesson_progress")
                 .select("lesson_id")
                 .eq("user_id", user.id)
-                .eq("completed", true)
-                .in("lesson_id", lessonIds);
+                .eq("completed", true),
+              supabase
+                .from("user_exam_results")
+                .select("passed")
+                .eq("user_id", user.id)
+                .eq("course_id", l1.id)
+                .eq("passed", true)
+                .maybeSingle()
+            ]);
 
-              if (progressData) {
-                const completedSet = new Set(progressData.map((p) => p.lesson_id));
-                setCompletedLessonIds(completedSet);
-              }
+            if (lessonsData) setLessons(lessonsData);
+            if (progressData) {
+              setCompletedLessonIds(new Set(progressData.map((p) => p.lesson_id)));
             }
-
-            // 2. Check Level 1 Exam Status (Matched with user_exam_results and course_id)
-            const { data: examData } = await supabase
-              .from("user_exam_results")
-              .select("passed")
-              .eq("user_id", user.id)
-              .eq("course_id", l1.id)
-              .eq("passed", true)
-              .maybeSingle();
-
             if (examData?.passed) {
               setHasPassedLevel1Exam(true);
             }
           }
         }
-
-        // 3. Fetch User Certificates
-        const { data: certsData } = await supabase
-          .from("user_certificates")
-          .select("id, course_name, issued_at")
-          .eq("user_id", user.id);
-
-        if (certsData) {
-          setCertificates(certsData);
-        }
+      } catch (err) {
+        console.error("Error loading dashboard data:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
 
     loadStudentData();
@@ -172,13 +162,11 @@ export default function StudentDashboard() {
     window.location.href = "/login/student";
   };
 
-  // --- Calculations ---
+  // Calculations
   const totalLessons = lessons.length;
   const completedLessonsCount = completedLessonIds.size;
   const progressPercentage = totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
   const allLessonsCompleted = completedLessonsCount === totalLessons && totalLessons > 0;
-
-  // Next uncompleted lesson in Level 1
   const nextLesson = lessons.find((l) => !completedLessonIds.has(l.id)) || lessons[0];
 
   const courseStatus = hasPassedLevel1Exam
@@ -187,7 +175,7 @@ export default function StudentDashboard() {
     ? "Not Started" 
     : "In Progress";
 
-  // --- Calendar Helpers ---
+  // Calendar Helpers
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
@@ -197,10 +185,10 @@ export default function StudentDashboard() {
   const handlePrevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
 
-  const today = new Date();
+  const today = currentTime || new Date();
   const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
 
-  if (loading) {
+  if (loading || !mounted) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-sans">
         <div className="flex items-center space-x-3 text-amber-400">

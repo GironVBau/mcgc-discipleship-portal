@@ -13,7 +13,7 @@ export default function Home() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 sm:px-8 py-12 sm:py-20 grid grid-cols-1 md:grid-cols-2 gap-12 items-center relative z-10">
         <div className="space-y-6">
           <span className="inline-block bg-amber-400/10 text-amber-400 text-xs font-bold px-4 py-1.5 rounded-full border border-amber-400/20 uppercase tracking-widest">
-            • Official Church Learning Platform
+            🔴 Official Church Learning Platform
           </span>
 
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight leading-tight">
