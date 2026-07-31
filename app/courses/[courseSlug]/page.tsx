@@ -53,9 +53,10 @@ export default async function CourseDetailPage({ params }: PageProps) {
 
   const totalLessons = lessons?.length || 0;
 
-  // 3. Fetch User Progress
+  // 3. Fetch User Progress & Exam Approval Status
   const { data: { user } } = await supabase.auth.getUser();
   const completedLessonIds = new Set<string>();
+  let isApprovedByTeacher = false;
 
   if (user && lessons && lessons.length > 0) {
     const lessonIds = lessons.map((l) => l.id);
@@ -67,10 +68,24 @@ export default async function CourseDetailPage({ params }: PageProps) {
       .in("lesson_id", lessonIds);
 
     progressData?.forEach((p) => completedLessonIds.add(p.lesson_id));
+
+    // Check teacher approval status
+    const { data: approvalData } = await supabase
+      .from("exam_approvals")
+      .select("is_approved")
+      .eq("user_id", user.id)
+      .eq("course_id", course.id)
+      .maybeSingle();
+
+    isApprovedByTeacher = approvalData?.is_approved ?? false;
   }
 
   const completedCount = completedLessonIds.size;
   const progressPercentage = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+  
+  // Double-lock conditions
+  const allLessonsCompleted = totalLessons > 0 && completedCount === totalLessons;
+  const isExamUnlocked = allLessonsCompleted && isApprovedByTeacher;
 
   return (
     <div className="max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -214,16 +229,30 @@ export default async function CourseDetailPage({ params }: PageProps) {
             {course.title} Examination
           </h3>
           <p className="text-xs text-slate-600 max-w-md">
-            Complete all lessons above to unlock your final knowledge check and earn your certificate.
+            Complete all lessons above and receive teacher approval to unlock your final knowledge check and earn your certificate.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm text-slate-500 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-sm shrink-0">
-          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          {completedCount === totalLessons && totalLessons > 0 ? "Unlocked" : "Locked"}
-        </div>
+        {isExamUnlocked ? (
+          <Link
+            href={`/courses/${course.slug}/exam`}
+            className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm transition-all shrink-0"
+          >
+            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+            </svg>
+            Take Exam
+          </Link>
+        ) : (
+          <div className="flex items-center gap-2 bg-white/80 backdrop-blur-sm text-slate-500 text-xs font-bold px-4 py-2.5 rounded-xl border border-slate-200/80 shadow-sm shrink-0">
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            {!allLessonsCompleted
+              ? "Locked"
+              : "Awaiting Teacher Approval"}
+          </div>
+        )}
       </section>
     </div>
   );

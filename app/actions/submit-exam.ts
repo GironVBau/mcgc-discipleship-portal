@@ -20,7 +20,37 @@ export async function submitFRAExam(
       };
     }
 
-    // Fetch answer key for the target course
+    // 1. Fetch target course ID
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('id')
+      .eq('slug', courseSlug)
+      .maybeSingle();
+
+    if (courseError || !course) {
+      return {
+        success: false,
+        error: 'Target course not found for exam submission.',
+      };
+    }
+
+    // 2. Strict Security Gate: Verify Teacher/Admin Approval in exam_approvals
+    const { data: approval, error: approvalError } = await supabase
+      .from('exam_approvals')
+      .select('is_approved')
+      .eq('user_id', user.id)
+      .eq('course_id', course.id)
+      .maybeSingle();
+
+    if (approvalError || !approval?.is_approved) {
+      return {
+        success: false,
+        error:
+          'Exam submission rejected: You do not have active teacher or admin approval to take this exam.',
+      };
+    }
+
+    // 3. Fetch answer key for the target course
     const { data: questions, error: qError } = await supabase
       .from('exam_questions')
       .select('question_number, correct_answer, points, part_number')
@@ -63,7 +93,7 @@ export async function submitFRAExam(
     const passed = percentage >= 85;
     const essayText = studentAnswers['essay'] || studentAnswers['6'] || '';
 
-    // Record main exam submission
+    // 4. Record main exam submission
     const { data: examSub, error: subError } = await supabase
       .from('student_exam_submissions')
       .insert({
@@ -86,7 +116,7 @@ export async function submitFRAExam(
       };
     }
 
-    // Queue essay submission for review (if essay exists)
+    // 5. Queue essay submission for review (if essay exists)
     if (essayText) {
       const { error: essayError } = await supabase
         .from('user_essay_submissions')

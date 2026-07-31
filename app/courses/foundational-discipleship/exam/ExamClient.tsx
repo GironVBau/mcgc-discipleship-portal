@@ -30,10 +30,67 @@ export default function FoundationalExamPage() {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Fetch Questions from Supabase
+  // 🛡️ Guard & Fetch Questions
   useEffect(() => {
-    async function loadQuestions() {
-      const { data, error } = await supabase
+    async function loadAndVerify() {
+      // 1. Get authenticated user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+
+      // 2. Fetch Course ID
+      const { data: course } = await supabase
+        .from('courses')
+        .select('id')
+        .eq('slug', COURSE_SLUG)
+        .single();
+
+      if (!course) {
+        router.replace('/courses');
+        return;
+      }
+
+      // 3. Check Lesson Completion
+      const { data: level1Lessons } = await supabase
+        .from('lessons')
+        .select('id')
+        .eq('course_id', course.id);
+
+      let allLessonsCompleted = false;
+      if (level1Lessons && level1Lessons.length > 0) {
+        const lessonIds = level1Lessons.map((l) => l.id);
+        const { data: completedProgress } = await supabase
+          .from('user_lesson_progress')
+          .select('lesson_id')
+          .eq('user_id', user.id)
+          .eq('completed', true)
+          .in('lesson_id', lessonIds);
+
+        allLessonsCompleted = (completedProgress?.length ?? 0) === level1Lessons.length;
+      }
+
+      // 4. Check Teacher/Admin Approval in `exam_approvals`
+      const { data: approval } = await supabase
+        .from('exam_approvals') // 👈 adjust table name if needed
+        .select('is_approved')
+        .eq('user_id', user.id)
+        .eq('course_id', course.id)
+        .maybeSingle();
+
+      const isApproved = !!approval?.is_approved;
+
+      // 🚫 Block access if lessons incomplete OR approval missing
+      if (!allLessonsCompleted || !isApproved) {
+        alert('Access Denied: You must complete all lessons and receive teacher approval before taking this exam.');
+        router.replace('/courses');
+        return;
+      }
+
+      // 5. If verified, load exam questions
+      const { data: questionData, error } = await supabase
         .from('exam_questions')
         .select('*')
         .eq('course_slug', COURSE_SLUG)
@@ -41,12 +98,14 @@ export default function FoundationalExamPage() {
 
       if (error) {
         console.error('Error loading questions:', error);
-      } else if (data) {
-        setQuestions(data as QuestionItem[]);
+      } else if (questionData) {
+        setQuestions(questionData as QuestionItem[]);
       }
+
       setLoading(false);
     }
-    loadQuestions();
+
+    loadAndVerify();
   }, []);
 
   // 90-Minute Timer with auto-submit
@@ -73,7 +132,6 @@ export default function FoundationalExamPage() {
     setAnswers((prev) => ({ ...prev, [String(qNum)]: value }));
   };
 
-  // Direct invocation of submitFRAExam Server Action
   const handleSubmit = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -109,15 +167,14 @@ export default function FoundationalExamPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600">
-        Loading Assessment...
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600 font-medium">
+        Verifying authorization & loading assessment...
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans pb-20">
-     
       {/* Sticky Header with Timer */}
       <div className="sticky top-0 z-50 bg-[#1e2e68] text-white px-6 py-3 flex justify-between items-center shadow-md">
         <h1 className="font-bold text-sm sm:text-base">
@@ -156,7 +213,6 @@ export default function FoundationalExamPage() {
               </span>
             </div>
 
-            {/* Rendered Question Text with Underlines / Formatting */}
             <p
               className="text-sm font-semibold text-slate-900 whitespace-pre-line [&>u]:underline [&>u]:decoration-2 [&>u]:underline-offset-4 [&>u]:font-bold [&>u]:text-[#1e2e68]"
               dangerouslySetInnerHTML={{
@@ -240,7 +296,6 @@ export default function FoundationalExamPage() {
                 value={answers[String(q.question_number)] || ''}
                 onChange={(e) => {
                   handleInputChange(q.question_number, e.target.value);
-                  // Keeps essay alias in sync if server expects 'essay'
                   handleInputChange('essay', e.target.value);
                 }}
                 className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e2e68]"

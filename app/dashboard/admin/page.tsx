@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useTransition, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { approveEnrollee, rejectEnrollee, deleteStudent } from "./actions";
+import { approveEnrollee, rejectEnrollee } from "./actions";
 import { 
   Users, 
   GraduationCap, 
@@ -17,12 +18,15 @@ import {
   Clock,
   Check,
   UserX,
-  Trash2,
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
   Plus,
-  Lock
+  Lock,
+  Award,
+  FileCheck,
+  FileText,
+  Eye
 } from "lucide-react";
 
 interface PendingEnrollee {
@@ -51,8 +55,31 @@ interface CourseItem {
   students_count: number;
 }
 
+interface StudentExamStatus {
+  studentId: string;
+  studentName: string;
+  username: string;
+  courseId: string;
+  courseTitle: string;
+  completedLessons: number;
+  totalLessons: number;
+  isApproved: boolean;
+}
+
+interface ExamSubmission {
+  id: string;
+  user_id: string;
+  course_id: string;
+  student_name: string;
+  score: number;
+  passed: boolean;
+  status: string;
+  submitted_at: string;
+}
+
 export default function AdminDashboard() {
   const supabase = useMemo(() => createClient(), []);
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const [adminProfile, setAdminProfile] = useState<{
@@ -70,7 +97,9 @@ export default function AdminDashboard() {
   // Lists State
   const [pendingRequests, setPendingRequests] = useState<PendingEnrollee[]>([]);
   const [activeStudents, setActiveStudents] = useState<ActiveStudent[]>([]);
-  
+  const [examStudentStatuses, setExamStudentStatuses] = useState<StudentExamStatus[]>([]);
+  const [examSubmissions, setExamSubmissions] = useState<ExamSubmission[]>([]);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -81,26 +110,19 @@ export default function AdminDashboard() {
 
   // Modal States
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newFullName, setNewFullName] = useState("");
-  const [newUsername, setNewUsername] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newRole, setNewRole] = useState<"admin" | "teacher" | "student">("teacher");
-  const [modalLoading, setModalLoading] = useState(false);
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [modalSuccess, setModalSuccess] = useState<string | null>(null);
-
-  // Manage Courses Modal
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+
+  // Form states for modals
+  const [newUserEmail, setNewUserEmail] = useState("");
+  const [newUserFullName, setNewUserFullName] = useState("");
+  const [newUserRole, setNewUserRole] = useState("teacher");
   const [courses, setCourses] = useState<CourseItem[]>([
-    { id: "1", title: "Discipleship 101: Foundations", instructor: "Pending", students_count: 24 },
-    { id: "2", title: "Leadership & Service", instructor: "Pending", students_count: 12 },
+    { id: "1", title: "Discipleship 101: Foundations", instructor: "Pastor John", students_count: 24 },
+    { id: "2", title: "Leadership & Service", instructor: "Minister Sarah", students_count: 12 },
   ]);
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newCourseInstructor, setNewCourseInstructor] = useState("");
-
-  // Security Settings Modal
-  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
 
   // Real-time Live Clock Effect
   useEffect(() => {
@@ -164,6 +186,68 @@ export default function AdminDashboard() {
 
         setActiveStudents(studentsData || []);
 
+        // Load Exam Approvals Data
+        const { data: coursesData } = await supabase.from("courses").select("id, title");
+        const { data: lessonsData } = await supabase.from("lessons").select("id, course_id");
+        const { data: progressData } = await supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true);
+        const { data: approvalsData } = await supabase.from("exam_approvals").select("user_id, course_id, is_approved");
+
+        if (studentsData && coursesData) {
+          const statuses: StudentExamStatus[] = [];
+
+          studentsData.forEach((st) => {
+            coursesData.forEach((crs) => {
+              const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
+              const totalLessons = courseLessons.length;
+              
+              if (totalLessons === 0) return;
+
+              const lessonIds = new Set(courseLessons.map((l) => l.id));
+              const userCompletedCount = progressData?.filter(
+                (p) => p.user_id === st.id && lessonIds.has(p.lesson_id)
+              ).length || 0;
+
+              const approval = approvalsData?.find(
+                (a) => a.user_id === st.id && a.course_id === crs.id
+              );
+
+              statuses.push({
+                studentId: st.id,
+                studentName: st.full_name || st.email,
+                username: st.username || "student",
+                courseId: crs.id,
+                courseTitle: crs.title,
+                completedLessons: userCompletedCount,
+                totalLessons: totalLessons,
+                isApproved: approval?.is_approved ?? false,
+              });
+            });
+          });
+
+          setExamStudentStatuses(statuses);
+        }
+
+        // Fetch Exam Submissions / Attempts
+        const { data: submissions } = await supabase
+          .from("exam_submissions")
+          .select("id, user_id, course_id, score, passed, status, submitted_at, profiles(full_name)")
+          .order("submitted_at", { ascending: false });
+
+        if (submissions) {
+          setExamSubmissions(
+            submissions.map((sub: any) => ({
+              id: sub.id,
+              user_id: sub.user_id,
+              course_id: sub.course_id,
+              student_name: sub.profiles?.full_name || "Unknown Student",
+              score: sub.score ?? 0,
+              passed: sub.passed ?? false,
+              status: sub.status || "completed",
+              submitted_at: sub.submitted_at,
+            }))
+          );
+        }
+
       } catch (err) {
         console.error("Unexpected error loading admin dashboard:", err);
       } finally {
@@ -220,40 +304,60 @@ export default function AdminDashboard() {
     });
   };
 
-  const handleDeleteStudent = (studentId: string, studentName: string) => {
-    if (!confirm(`Are you sure you want to permanently delete ${studentName}? This cannot be undone.`)) {
-      return;
-    }
-
+  const handleToggleExamApproval = async (studentId: string, courseId: string, currentStatus: boolean) => {
     setActionError(null);
     setActionSuccess(null);
 
-    startTransition(async () => {
-      try {
-        await deleteStudent(studentId);
-        setActiveStudents((prev) => prev.filter((s) => s.id !== studentId));
-        setStudentCount((prev) => (typeof prev === "number" && prev > 0 ? prev - 1 : 0));
-        setActionSuccess(`Successfully deleted account for ${studentName}.`);
-      } catch (err: any) {
-        setActionError(err.message || "Failed to delete student account.");
-      }
-    });
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const newStatus = !currentStatus;
+
+      const { error } = await supabase
+        .from("exam_approvals")
+        .upsert(
+          {
+            user_id: studentId,
+            course_id: courseId,
+            is_approved: newStatus,
+            approved_by: user?.id,
+            approved_at: newStatus ? new Date().toISOString() : null,
+          },
+          { onConflict: "user_id,course_id" }
+        );
+
+      if (error) throw error;
+
+      setExamStudentStatuses((prev) =>
+        prev.map((item) =>
+          item.studentId === studentId && item.courseId === courseId
+            ? { ...item, isApproved: newStatus }
+            : item
+        )
+      );
+
+      setActionSuccess(`Exam approval ${newStatus ? "granted" : "revoked"} successfully.`);
+      router.refresh();
+    } catch (err: any) {
+      setActionError(err.message || "Failed to update exam approval status.");
+    }
   };
 
   const handleAddCourse = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCourseTitle.trim()) return;
+    if (!newCourseTitle) return;
 
-    const newCourse: CourseItem = {
-      id: Date.now().toString(),
-      title: newCourseTitle.trim(),
-      instructor: newCourseInstructor.trim() || "Unassigned",
-      students_count: 0,
-    };
-
-    setCourses((prev) => [...prev, newCourse]);
+    setCourses((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        title: newCourseTitle,
+        instructor: newCourseInstructor || "Unassigned",
+        students_count: 0,
+      },
+    ]);
     setNewCourseTitle("");
     setNewCourseInstructor("");
+    setActionSuccess("New course created successfully.");
   };
 
   // Calendar Helpers
@@ -356,13 +460,113 @@ export default function AdminDashboard() {
 
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 backdrop-blur-md flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">System Status</p>
-              <p className="text-3xl font-black text-emerald-400 mt-1">Operational</p>
+              <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">Exam Approvals</p>
+              <p className="text-3xl font-black text-emerald-400 mt-1">
+                {examStudentStatuses.filter((s) => s.isApproved).length}
+              </p>
             </div>
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
-              <ShieldCheck className="w-6 h-6" />
+              <Award className="w-6 h-6" />
             </div>
           </div>
+        </div>
+
+        {/* Student Exam Gatekeeper Approvals */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <FileCheck className="w-5 h-5 text-amber-400" />
+              <span>Student Exam Gatekeeper Approvals</span>
+            </h2>
+            <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
+              Teacher & Admin Gatekeeper
+            </span>
+          </div>
+
+          {examStudentStatuses.length === 0 ? (
+            <div className="p-8 text-center bg-slate-950/40 border border-slate-800/60 rounded-2xl">
+              <p className="text-xs text-slate-400 font-medium">No students or course lessons found.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {examStudentStatuses.map((st) => {
+                const isFullyComplete = st.completedLessons === st.totalLessons && st.totalLessons > 0;
+
+                return (
+                  <div
+                    key={`${st.studentId}-${st.courseId}`}
+                    className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <p className="text-sm font-bold text-white">{st.studentName}</p>
+                        <span className="text-xs text-slate-500">(@{st.username})</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Course: <span className="text-slate-200 font-medium">{st.courseTitle}</span>
+                      </p>
+                      <div className="flex items-center space-x-2 text-xs">
+                        <span className="text-slate-400">Progress:</span>
+                        <span className={isFullyComplete ? "text-emerald-400 font-bold" : "text-amber-400 font-semibold"}>
+                          {st.completedLessons} / {st.totalLessons} lessons completed
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3 shrink-0">
+                      {st.isApproved ? (
+                        <button
+                          onClick={() => handleToggleExamApproval(st.studentId, st.courseId, true)}
+                          className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>Approved (Click to Revoke)</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleToggleExamApproval(st.studentId, st.courseId, false)}
+                          className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-sm"
+                        >
+                          <Award className="w-4 h-4" />
+                          <span>Approve Exam Access</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Submitted Exam Results & Essays */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-blue-400" />
+              <span>Submitted Exam Results & Essays</span>
+            </h2>
+          </div>
+
+          {examSubmissions.length === 0 ? (
+            <div className="p-8 text-center bg-slate-950/40 border border-slate-800/60 rounded-2xl">
+              <p className="text-xs text-slate-400 font-medium">No submitted exam results found.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {examSubmissions.map((sub) => (
+                <div key={sub.id} className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-white">{sub.student_name}</p>
+                    <p className="text-xs text-slate-400">Score: <span className="text-amber-400 font-bold">{sub.score}%</span></p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${sub.passed ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"}`}>
+                    {sub.passed ? "PASSED" : "FAILED"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Real-time Calendar & Clock */}
@@ -534,7 +738,7 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               <button
                 onClick={() => setIsAddUserOpen(true)}
-                className="w-full text-left px-5 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold text-xs flex items-center justify-between"
+                className="w-full text-left px-5 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold text-xs flex items-center justify-between transition-all"
               >
                 <div className="flex items-center space-x-3">
                   <UserPlus className="w-4 h-4" />
@@ -544,7 +748,7 @@ export default function AdminDashboard() {
 
               <button 
                 onClick={() => setIsCourseModalOpen(true)}
-                className="w-full text-left px-5 py-4 bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-2xl font-semibold text-xs flex items-center justify-between"
+                className="w-full text-left px-5 py-4 bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-2xl font-semibold text-xs flex items-center justify-between transition-all"
               >
                 <div className="flex items-center space-x-3">
                   <BookOpen className="w-4 h-4 text-slate-400" />
@@ -554,7 +758,7 @@ export default function AdminDashboard() {
 
               <button 
                 onClick={() => setIsSecurityModalOpen(true)}
-                className="w-full text-left px-5 py-4 bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-2xl font-semibold text-xs flex items-center justify-between"
+                className="w-full text-left px-5 py-4 bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-slate-200 rounded-2xl font-semibold text-xs flex items-center justify-between transition-all"
               >
                 <div className="flex items-center space-x-3">
                   <Lock className="w-4 h-4 text-slate-400" />
@@ -565,6 +769,191 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* =========================================
+          MODALS SECTION (Quick Management Dialogs)
+         ========================================= */}
+
+      {/* 1. Add User / Staff Modal */}
+      {isAddUserOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <UserPlus className="w-5 h-5 text-blue-400" />
+                <span>Add User / Staff</span>
+              </h3>
+              <button 
+                onClick={() => setIsAddUserOpen(false)} 
+                className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Full Name</label>
+                <input 
+                  type="text" 
+                  value={newUserFullName}
+                  onChange={(e) => setNewUserFullName(e.target.value)}
+                  placeholder="e.g. Jane Doe"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  value={newUserEmail}
+                  onChange={(e) => setNewUserEmail(e.target.value)}
+                  placeholder="e.g. jane@church.org"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Role / Account Type</label>
+                <select 
+                  value={newUserRole} 
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="teacher">Teacher / Instructor</option>
+                  <option value="admin">Administrator</option>
+                  <option value="student">Student</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 pt-2">
+              <button
+                onClick={() => {
+                  setActionSuccess(`Invite and user entry registered for ${newUserFullName || "new user"}!`);
+                  setIsAddUserOpen(false);
+                  setNewUserFullName("");
+                  setNewUserEmail("");
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs"
+              >
+                Create Account
+              </button>
+              <button
+                onClick={() => setIsAddUserOpen(false)}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Manage Courses Modal */}
+      {isCourseModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <BookOpen className="w-5 h-5 text-blue-400" />
+                <span>Manage Courses & Classes</span>
+              </h3>
+              <button 
+                onClick={() => setIsCourseModalOpen(false)} 
+                className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Course List */}
+            <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+              {courses.map((crs) => (
+                <div key={crs.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-bold text-white">{crs.title}</p>
+                    <p className="text-slate-400 text-[11px]">Instructor: {crs.instructor}</p>
+                  </div>
+                  <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full font-bold">
+                    {crs.students_count} students
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Create New Course Form */}
+            <form onSubmit={handleAddCourse} className="space-y-3 pt-3 border-t border-slate-800">
+              <p className="text-xs font-bold text-amber-400">Add New Course</p>
+              <input 
+                type="text"
+                placeholder="Course Title"
+                value={newCourseTitle}
+                onChange={(e) => setNewCourseTitle(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+              <input 
+                type="text"
+                placeholder="Instructor Name"
+                value={newCourseInstructor}
+                onChange={(e) => setNewCourseInstructor(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center space-x-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Course</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Security Settings Modal */}
+      {isSecurityModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <Lock className="w-5 h-5 text-amber-400" />
+                <span>Security & Gatekeeper Settings</span>
+              </h3>
+              <button 
+                onClick={() => setIsSecurityModalOpen(false)} 
+                className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                <p className="font-bold text-white">Require Manual Exam Approval</p>
+                <p className="text-slate-400 text-[11px]">Prevent students from taking exams until a teacher/admin manually approves them.</p>
+                <span className="inline-block bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px] mt-1">ACTIVE</span>
+              </div>
+
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1">
+                <p className="font-bold text-white">Auto-Lock Completed Exams</p>
+                <p className="text-slate-400 text-[11px]">Lock submitted exam answers immediately to avoid re-submissions.</p>
+                <span className="inline-block bg-emerald-500/10 text-emerald-400 font-bold px-2 py-0.5 rounded text-[10px] mt-1">ACTIVE</span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                onClick={() => setIsSecurityModalOpen(false)}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 rounded-xl text-xs"
+              >
+                Close Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

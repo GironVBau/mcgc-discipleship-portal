@@ -3,22 +3,29 @@ import Link from 'next/link';
 
 export default async function CoursesPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // Fetch all courses from DB
-  const { data: courses } = await supabase
-    .from('courses')
-    .select('*');
+  const { data: courses } = await supabase.from('courses').select('*');
 
-  const foundationalCourse = courses?.find(c => c.slug === 'foundational-discipleship');
-  const fundamentalCourse = courses?.find(c => c.slug === 'fundamental-discipleship');
-  const ministryReadinessCourse = courses?.find(c => c.slug === 'ministry-readiness');
+  const foundationalCourse = courses?.find(
+    (c) => c.slug === 'foundational-discipleship'
+  );
+  const fundamentalCourse = courses?.find(
+    (c) => c.slug === 'fundamental-discipleship'
+  );
+  const ministryReadinessCourse = courses?.find(
+    (c) => c.slug === 'ministry-readiness'
+  );
 
-  // Track progress states
+  // Track progress and approval states
   let passedLevel1 = false;
   let passedLevel2 = false;
   let completedSurvey = false;
   let allLevel1LessonsCompleted = false;
+  let isLevel1Approved = false;
 
   if (user && foundationalCourse) {
     // 1. Check Level 1 & Level 2 Exam Results
@@ -28,10 +35,10 @@ export default async function CoursesPage() {
       .eq('user_id', user.id);
 
     passedLevel1 = !!examResults?.some(
-      r => r.course_id === foundationalCourse?.id && r.passed
+      (r) => r.course_id === foundationalCourse?.id && r.passed
     );
     passedLevel2 = !!examResults?.some(
-      r => r.course_id === fundamentalCourse?.id && r.passed
+      (r) => r.course_id === fundamentalCourse?.id && r.passed
     );
 
     // 2. Check Spiritual Gifts Survey Results
@@ -51,7 +58,7 @@ export default async function CoursesPage() {
 
     if (level1Lessons && level1Lessons.length > 0) {
       const lessonIds = level1Lessons.map((l) => l.id);
-      
+
       const { data: completedProgress } = await supabase
         .from('user_lesson_progress')
         .select('lesson_id')
@@ -59,12 +66,24 @@ export default async function CoursesPage() {
         .eq('completed', true)
         .in('lesson_id', lessonIds);
 
-      // Level 1 exam is ONLY unlocked if total completed matches total lessons count
-      allLevel1LessonsCompleted = (completedProgress?.length ?? 0) === level1Lessons.length;
+      // Level 1 lessons completed check
+      allLevel1LessonsCompleted =
+        (completedProgress?.length ?? 0) === level1Lessons.length;
     }
+
+    // 4. Check Teacher/Admin Exam Approval Status
+    const { data: approval } = await supabase
+      .from('exam_approvals')
+      .select('is_approved')
+      .eq('user_id', user.id)
+      .eq('course_id', foundationalCourse.id)
+      .maybeSingle();
+
+    isLevel1Approved = !!approval?.is_approved;
   }
 
-  // Calculate Lock States
+  // Calculate Lock & Exam Access States
+  const canTakeLevel1Exam = allLevel1LessonsCompleted && isLevel1Approved;
   const isLevel2Unlocked = passedLevel1;
   const isSurveyUnlocked = passedLevel1 && passedLevel2;
   const isLevel3Unlocked = isSurveyUnlocked && completedSurvey;
@@ -79,12 +98,12 @@ export default async function CoursesPage() {
           Discipleship and Ministry Readiness
         </h1>
         <p className="text-slate-600 text-sm max-w-lg mx-auto">
-          From foundational truth to mature faith. Every step of your spiritual formation is tracked, guided, and celebrated.
+          From foundational truth to mature faith. Every step of your spiritual
+          formation is tracked, guided, and celebrated.
         </p>
       </header>
 
       <div className="space-y-6">
-        
         {/* LEVEL 1 CARD */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
           <div className="space-y-2">
@@ -92,15 +111,19 @@ export default async function CoursesPage() {
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
                 Level 1
               </span>
-              
+
               {/* Status Badges */}
               {passedLevel1 ? (
                 <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                   ✓ Exam Passed
                 </span>
-              ) : allLevel1LessonsCompleted ? (
+              ) : canTakeLevel1Exam ? (
                 <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
                   ★ Exam Unlocked
+                </span>
+              ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
+                <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                  ⏳ Awaiting Teacher Approval
                 </span>
               ) : (
                 <span className="text-xs text-slate-500 font-medium">
@@ -113,7 +136,8 @@ export default async function CoursesPage() {
               {foundationalCourse?.title || 'Foundational Discipleship'}
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {foundationalCourse?.description || 'A foundational study for new believers covering the essential starting points of the Christian walk.'}
+              {foundationalCourse?.description ||
+                'A foundational study for new believers covering the essential starting points of the Christian walk.'}
             </p>
           </div>
 
@@ -134,16 +158,24 @@ export default async function CoursesPage() {
               >
                 Retake Exam
               </Link>
-            ) : allLevel1LessonsCompleted ? (
-              /* Unlocked: Ready to take exam */
+            ) : canTakeLevel1Exam ? (
+              /* Unlocked: Lessons complete & approved by teacher */
               <Link
                 href="/courses/foundational-discipleship/exam"
                 className="text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm px-5 py-3 rounded-xl transition-all shadow-md shadow-amber-400/20"
               >
                 Take Exam →
               </Link>
+            ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
+              /* Waiting for teacher approval */
+              <button
+                disabled
+                className="bg-amber-100 text-amber-800 font-semibold text-sm px-5 py-3 rounded-xl cursor-not-allowed border border-amber-200"
+              >
+                Pending Approval ⏳
+              </button>
             ) : (
-              /* Locked: Disabled button until all lessons are finished */
+              /* Locked: Lessons not finished */
               <button
                 disabled
                 className="bg-slate-100 text-slate-400 font-semibold text-sm px-5 py-3 rounded-xl cursor-not-allowed border border-slate-200"
@@ -155,23 +187,36 @@ export default async function CoursesPage() {
         </div>
 
         {/* LEVEL 2 CARD */}
-        <div className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-          isLevel2Unlocked ? 'border-slate-200 opacity-100' : 'border-slate-200/60 opacity-60 bg-slate-50/50'
-        }`}>
+        <div
+          className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
+            isLevel2Unlocked
+              ? 'border-slate-200 opacity-100'
+              : 'border-slate-200/60 opacity-60 bg-slate-50/50'
+          }`}
+        >
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                isLevel2Unlocked ? 'text-blue-800 bg-blue-100' : 'text-slate-600 bg-slate-200'
-              }`}>
+              <span
+                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
+                  isLevel2Unlocked
+                    ? 'text-blue-800 bg-blue-100'
+                    : 'text-slate-600 bg-slate-200'
+                }`}
+              >
                 Level 2
               </span>
-              {!isLevel2Unlocked && <span className="text-xs text-amber-700 font-semibold">🔒 Pass Level 1 Exam to unlock</span>}
+              {!isLevel2Unlocked && (
+                <span className="text-xs text-amber-700 font-semibold">
+                  🔒 Pass Level 1 Exam to unlock
+                </span>
+              )}
             </div>
             <h2 className="text-xl font-bold text-slate-900">
               {fundamentalCourse?.title || 'Fundamental Discipleship'}
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {fundamentalCourse?.description || 'A systematic study of core Christian doctrine grounded in Scripture.'}
+              {fundamentalCourse?.description ||
+                'A systematic study of core Christian doctrine grounded in Scripture.'}
             </p>
           </div>
           {isLevel2Unlocked ? (
@@ -182,32 +227,54 @@ export default async function CoursesPage() {
               {passedLevel2 ? 'Review Track →' : 'Start Level 2 →'}
             </Link>
           ) : (
-            <button disabled className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed">
+            <button
+              disabled
+              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
+            >
               Locked
             </button>
           )}
         </div>
 
         {/* BRIDGE: SPIRITUAL GIFTS SURVEY CARD */}
-        <div className={`rounded-3xl p-6 sm:p-8 border shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-          isSurveyUnlocked 
-            ? 'bg-gradient-to-br from-[#1e2e68] to-[#121c40] text-white border-blue-900' 
-            : 'bg-white border-slate-200 opacity-60'
-        }`}>
+        <div
+          className={`rounded-3xl p-6 sm:p-8 border shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
+            isSurveyUnlocked
+              ? 'bg-gradient-to-br from-[#1e2e68] to-[#121c40] text-white border-blue-900'
+              : 'bg-white border-slate-200 opacity-60'
+          }`}
+        >
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                isSurveyUnlocked ? 'bg-amber-400 text-slate-950' : 'bg-slate-200 text-slate-600'
-              }`}>
+              <span
+                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
+                  isSurveyUnlocked
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'bg-slate-200 text-slate-600'
+                }`}
+              >
                 Bridge Assessment
               </span>
-              {!isSurveyUnlocked && <span className="text-xs text-amber-700 font-semibold">🔒 Complete Levels 1 & 2 first</span>}
+              {!isSurveyUnlocked && (
+                <span className="text-xs text-amber-700 font-semibold">
+                  🔒 Complete Levels 1 & 2 first
+                </span>
+              )}
             </div>
-            <h2 className={`text-xl font-bold ${isSurveyUnlocked ? 'text-white' : 'text-slate-900'}`}>
+            <h2
+              className={`text-xl font-bold ${
+                isSurveyUnlocked ? 'text-white' : 'text-slate-900'
+              }`}
+            >
               Spiritual Gifts Survey
             </h2>
-            <p className={`text-xs leading-relaxed max-w-md ${isSurveyUnlocked ? 'text-blue-100' : 'text-slate-600'}`}>
-              Discover your primary ministry gifts and strengths. Required before unlocking Level 3: Ministry Readiness.
+            <p
+              className={`text-xs leading-relaxed max-w-md ${
+                isSurveyUnlocked ? 'text-blue-100' : 'text-slate-600'
+              }`}
+            >
+              Discover your primary ministry gifts and strengths. Required
+              before unlocking Level 3: Ministry Readiness.
             </p>
           </div>
           {isSurveyUnlocked ? (
@@ -215,33 +282,51 @@ export default async function CoursesPage() {
               href="/spiritual-gifts-survey"
               className="w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm px-6 py-3 rounded-xl transition-all shadow-sm"
             >
-              {completedSurvey ? 'View / Retake Survey →' : 'Take Survey Now →'}
+              {completedSurvey
+                ? 'View / Retake Survey →'
+                : 'Take Survey Now →'}
             </Link>
           ) : (
-            <button disabled className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed">
+            <button
+              disabled
+              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
+            >
               Locked
             </button>
           )}
         </div>
 
         {/* LEVEL 3 CARD */}
-        <div className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-          isLevel3Unlocked ? 'border-slate-200 opacity-100' : 'border-slate-200/60 opacity-60 bg-slate-50/50'
-        }`}>
+        <div
+          className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
+            isLevel3Unlocked
+              ? 'border-slate-200 opacity-100'
+              : 'border-slate-200/60 opacity-60 bg-slate-50/50'
+          }`}
+        >
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                isLevel3Unlocked ? 'text-purple-800 bg-purple-100' : 'text-slate-600 bg-slate-200'
-              }`}>
+              <span
+                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
+                  isLevel3Unlocked
+                    ? 'text-purple-800 bg-purple-100'
+                    : 'text-slate-600 bg-slate-200'
+                }`}
+              >
                 Level 3
               </span>
-              {!isLevel3Unlocked && <span className="text-xs text-amber-700 font-semibold">🔒 Complete Spiritual Gifts Survey to unlock</span>}
+              {!isLevel3Unlocked && (
+                <span className="text-xs text-amber-700 font-semibold">
+                  🔒 Complete Spiritual Gifts Survey to unlock
+                </span>
+              )}
             </div>
             <h2 className="text-xl font-bold text-slate-900">
               {ministryReadinessCourse?.title || 'Ministry Readiness Track'}
             </h2>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {ministryReadinessCourse?.description || 'Discover spiritual gifts, understand biblical ministry, and find your place of service in the church.'}
+              {ministryReadinessCourse?.description ||
+                'Discover spiritual gifts, understand biblical ministry, and find your place of service in the church.'}
             </p>
           </div>
           {isLevel3Unlocked ? (
@@ -252,12 +337,14 @@ export default async function CoursesPage() {
               Start Level 3 →
             </Link>
           ) : (
-            <button disabled className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed">
+            <button
+              disabled
+              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
+            >
               Locked
             </button>
           )}
         </div>
-
       </div>
     </div>
   );
