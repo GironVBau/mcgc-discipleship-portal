@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitFRAExam } from '@/app/actions/submit-exam';
@@ -26,7 +26,12 @@ interface ExamClientProps {
   courseTitle: string;
 }
 
-export default function ExamClient({ courseId, userId, courseSlug, courseTitle }: ExamClientProps) {
+export default function ExamClient({
+  courseId,
+  userId,
+  courseSlug,
+  courseTitle,
+}: ExamClientProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -35,6 +40,12 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
   const [timeLeft, setTimeLeft] = useState<number>(EXAM_DURATION_SECONDS);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Ref to hold current answers state and prevent stale closures during auto-submit
+  const answersRef = useRef(answers);
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   // Fetch Questions dynamically by courseSlug
   useEffect(() => {
@@ -57,7 +68,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
     loadQuestions();
   }, [supabase, courseSlug]);
 
-  // 90-Minute Timer with auto-submit
+  // 90-Minute Timer with safe auto-submit
   useEffect(() => {
     if (loading) return;
 
@@ -66,7 +77,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
         if (prev <= 1) {
           clearInterval(timer);
           if (!isSubmitting) {
-            handleSubmit();
+            executeSubmission(answersRef.current);
           }
           return 0;
         }
@@ -81,12 +92,30 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
     setAnswers((prev) => ({ ...prev, [String(qNum)]: value }));
   };
 
-  const handleSubmit = async () => {
+  const executeSubmission = async (answersToSubmit: Record<string, string>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
     try {
-      const res = await submitFRAExam(answers, courseSlug);
+      // Find essay response across any question in parts 5 or 6
+      const essayQuestions = questions.filter((q) => [5, 6].includes(q.part_number));
+      let mainEssay = '';
+
+      for (const eq of essayQuestions) {
+        const val = answersToSubmit[String(eq.question_number)];
+        if (val) {
+          mainEssay = val;
+          break;
+        }
+      }
+
+      // Attach extracted essay explicitly so the server action catches it reliably
+      const finalPayload = {
+        ...answersToSubmit,
+        essay: mainEssay || answersToSubmit['essay'] || '',
+      };
+
+      const res = await submitFRAExam(finalPayload, courseSlug);
 
       if (!res || !res.success) {
         alert(`Submission Error: ${res?.error || 'Unable to submit exam.'}`);
@@ -96,7 +125,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
       alert(
         `Exam Submitted Successfully!\n\n` +
           `Score: ${res.score} points (${res.percentage}%)\n` +
-          `Status: ${res.passed ? 'PASSED' : 'PENDING ESSAY REVIEW'}`
+          `Status: ${res.passed ? 'PASSED' : 'PENDING REVIEW'}`
       );
 
       router.push('/courses');
@@ -140,7 +169,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
             Course Assessment
           </span>
           <h2 className="text-2xl font-black text-slate-900">
-            Ministry of Christ's Great Commission Church Inc.
+            Ministry of Christ&apos;s Great Commission Church Inc.
           </h2>
           <p className="text-xs text-slate-500">
             Passing Score: 85% | Total Time: 90 Minutes
@@ -204,7 +233,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
               </div>
             )}
 
-            {/* Part 2: Modified T/F or Code Buttons */}
+            {/* Part 2: Modified T/F or Option Buttons */}
             {q.part_number === 2 && (
               <div className="flex flex-wrap gap-3 pt-2">
                 {q.options && q.options.length > 0
@@ -261,10 +290,9 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
                 rows={4}
                 placeholder="Type your comprehensive, biblically grounded answer..."
                 value={answers[String(q.question_number)] || ''}
-                onChange={(e) => {
-                  handleInputChange(q.question_number, e.target.value);
-                  handleInputChange(`essay_${q.question_number}`, e.target.value);
-                }}
+                onChange={(e) =>
+                  handleInputChange(q.question_number, e.target.value)
+                }
                 className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e2e68]"
               />
             )}
@@ -273,7 +301,7 @@ export default function ExamClient({ courseId, userId, courseSlug, courseTitle }
 
         {/* Submit Action Button */}
         <button
-          onClick={handleSubmit}
+          onClick={() => executeSubmission(answers)}
           disabled={isSubmitting}
           className="w-full bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-extrabold py-4 rounded-2xl shadow-lg transition-all text-base mt-6 disabled:opacity-60"
         >

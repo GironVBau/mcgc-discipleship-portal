@@ -6,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import { 
   Users, 
   GraduationCap, 
-  BookOpen, 
   LogOut, 
   CheckCircle2, 
   AlertCircle,
@@ -137,10 +136,10 @@ export default function TeacherDashboard() {
         }
 
       } catch (err) {
-          console.error("Unexpected error loading teacher dashboard:", err);
-        } finally {
-          setLoading(false);
-        }
+        console.error("Unexpected error loading teacher dashboard:", err);
+      } finally {
+        setLoading(false);
+      }
     }
 
     loadTeacherData();
@@ -205,7 +204,7 @@ export default function TeacherDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-sans">
         <div className="flex items-center space-x-3">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent" />
           <span className="text-slate-400 text-sm font-medium">Loading Teacher Dashboard...</span>

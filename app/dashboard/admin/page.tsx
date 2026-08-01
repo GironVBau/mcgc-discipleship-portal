@@ -226,7 +226,7 @@ export default function AdminDashboard() {
           setExamStudentStatuses(statuses);
         }
 
-        // Fetch Exam Submissions / Attempts
+        // Fetch Exam Submissions
         const { data: submissions } = await supabase
           .from("exam_submissions")
           .select("id, user_id, course_id, score, passed, status, submitted_at, profiles(full_name)")
@@ -249,7 +249,7 @@ export default function AdminDashboard() {
 
       } catch (err) {
         console.error("Unexpected error loading admin dashboard:", err);
-      } finally {
+      } font-medium {
         setLoading(false);
       }
     }
@@ -375,7 +375,7 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-sans">
         <div className="flex items-center space-x-3">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent" />
           <span className="text-slate-400 text-sm font-medium">Loading Admin Dashboard...</span>
@@ -769,11 +769,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* =========================================
-          MODALS SECTION (Quick Management Dialogs)
-         ========================================= */}
-
-      {/* 1. Add User / Staff Modal */}
+      {/* MODALS SECTION */}
       {isAddUserOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
@@ -850,7 +846,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 2. Manage Courses Modal */}
       {isCourseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
@@ -867,7 +862,6 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Course List */}
             <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
               {courses.map((crs) => (
                 <div key={crs.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
@@ -882,7 +876,6 @@ export default function AdminDashboard() {
               ))}
             </div>
 
-            {/* Create New Course Form */}
             <form onSubmit={handleAddCourse} className="space-y-3 pt-3 border-t border-slate-800">
               <p className="text-xs font-bold text-amber-400">Add New Course</p>
               <input 
@@ -911,7 +904,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 3. Security Settings Modal */}
       {isSecurityModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">

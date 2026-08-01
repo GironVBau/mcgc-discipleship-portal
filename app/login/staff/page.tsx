@@ -140,7 +140,16 @@ export default function StaffLogin() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Password</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300">Password</label>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs font-semibold text-blue-400 hover:underline transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
