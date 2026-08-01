@@ -25,14 +25,13 @@ import {
   Lock,
   Award,
   FileCheck,
-  FileText,
-  Eye
+  FileText
 } from "lucide-react";
 
 interface PendingEnrollee {
   id: string;
   first_name: string;
-  last_name: string;
+  surname: string;
   username: string;
   email: string;
   phone_number: string;
@@ -694,7 +693,7 @@ export default function AdminDashboard() {
           ) : (
             <div className="space-y-3">
               {pendingRequests.map((req) => {
-                const fullName = `${req.first_name} ${req.last_name}`;
+                const fullName = `${req.first_name} ${req.surname}`;
                 return (
                   <div key={req.id} className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
@@ -706,7 +705,7 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => handleApproveStudent(req.id, fullName)}
                         disabled={isPending}
-                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 disabled:opacity-50"
+                        className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 disabled:opacity-50 transition-all"
                       >
                         <Check className="w-3.5 h-3.5" />
                         <span>Approve & Activate</span>
@@ -715,7 +714,7 @@ export default function AdminDashboard() {
                       <button
                         onClick={() => handleRejectStudent(req.id)}
                         disabled={isPending}
-                        className="bg-rose-950/80 border border-rose-800/60 text-rose-300 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 disabled:opacity-50"
+                        className="bg-rose-950/80 border border-rose-800/60 text-rose-300 font-bold px-3.5 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 disabled:opacity-50 transition-all"
                       >
                         <UserX className="w-3.5 h-3.5" />
                         <span>Reject</span>

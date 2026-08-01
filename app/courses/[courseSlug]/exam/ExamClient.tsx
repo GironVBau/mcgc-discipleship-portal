@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitFRAExam } from '@/app/actions/submit-exam';
 
-const COURSE_SLUG = 'foundational-discipleship';
 const EXAM_DURATION_SECONDS = 90 * 60; // 90 minutes
 
 interface QuestionItem {
@@ -23,9 +22,11 @@ interface QuestionItem {
 interface ExamClientProps {
   courseId: string;
   userId: string;
+  courseSlug: string;
+  courseTitle: string;
 }
 
-export default function ExamClient({ courseId, userId }: ExamClientProps) {
+export default function ExamClient({ courseId, userId, courseSlug, courseTitle }: ExamClientProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -35,13 +36,13 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Fetch Questions (Server already verified authorization)
+  // Fetch Questions dynamically by courseSlug
   useEffect(() => {
     async function loadQuestions() {
       const { data: questionData, error } = await supabase
         .from('exam_questions')
         .select('*')
-        .eq('course_slug', COURSE_SLUG)
+        .eq('course_slug', courseSlug)
         .order('question_number', { ascending: true });
 
       if (error) {
@@ -54,7 +55,7 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
     }
 
     loadQuestions();
-  }, [supabase]);
+  }, [supabase, courseSlug]);
 
   // 90-Minute Timer with auto-submit
   useEffect(() => {
@@ -85,7 +86,7 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
     setIsSubmitting(true);
 
     try {
-      const res = await submitFRAExam(answers, COURSE_SLUG);
+      const res = await submitFRAExam(answers, courseSlug);
 
       if (!res || !res.success) {
         alert(`Submission Error: ${res?.error || 'Unable to submit exam.'}`);
@@ -94,7 +95,7 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
 
       alert(
         `Exam Submitted Successfully!\n\n` +
-          `Score: ${res.score}/100 (${res.percentage}%)\n` +
+          `Score: ${res.score} points (${res.percentage}%)\n` +
           `Status: ${res.passed ? 'PASSED' : 'PENDING ESSAY REVIEW'}`
       );
 
@@ -115,7 +116,7 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600 font-medium">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-[#1e2e68] font-medium">
         Loading assessment questions...
       </div>
     );
@@ -126,7 +127,7 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
       {/* Sticky Header with Timer */}
       <div className="sticky top-0 z-50 bg-[#1e2e68] text-white px-6 py-3 flex justify-between items-center shadow-md">
         <h1 className="font-bold text-sm sm:text-base">
-          Foundational Readiness Assessment (FRA)
+          {courseTitle} Assessment
         </h1>
         <div className="bg-amber-400 text-slate-950 font-extrabold px-4 py-1 rounded-full text-sm">
           ⏳ Time Remaining: {formatTime(timeLeft)}
@@ -136,13 +137,13 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
       <main className="max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
         <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
-            Level 1 Course Assessment
+            Course Assessment
           </span>
           <h2 className="text-2xl font-black text-slate-900">
             Ministry of Christ's Great Commission Church Inc.
           </h2>
           <p className="text-xs text-slate-500">
-            Passing Score: 85% | Total Time: 90 Minutes | 100 Points
+            Passing Score: 85% | Total Time: 90 Minutes
           </p>
         </div>
 
@@ -203,28 +204,46 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
               </div>
             )}
 
-            {/* Part 2: Two Statement Code Buttons */}
+            {/* Part 2: Modified T/F or Code Buttons */}
             {q.part_number === 2 && (
-              <div className="flex gap-3 pt-2">
-                {['A', 'B', 'C', 'D'].map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => handleInputChange(q.question_number, code)}
-                    className={`w-10 h-10 rounded-xl font-bold border transition-all ${
-                      answers[String(q.question_number)] === code
-                        ? 'bg-[#1e2e68] text-white border-[#1e2e68]'
-                        : 'bg-slate-100 text-slate-700 border-slate-200'
-                    }`}
-                  >
-                    {code}
-                  </button>
-                ))}
+              <div className="flex flex-wrap gap-3 pt-2">
+                {q.options && q.options.length > 0
+                  ? q.options.map((opt: any) => {
+                      const val = typeof opt === 'string' ? opt : opt.value;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => handleInputChange(q.question_number, val)}
+                          className={`px-4 py-2 rounded-xl font-bold border transition-all text-sm ${
+                            answers[String(q.question_number)] === val
+                              ? 'bg-[#1e2e68] text-white border-[#1e2e68]'
+                              : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                          }`}
+                        >
+                          {val}
+                        </button>
+                      );
+                    })
+                  : ['A', 'B', 'C', 'D'].map((code) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => handleInputChange(q.question_number, code)}
+                        className={`w-10 h-10 rounded-xl font-bold border transition-all ${
+                          answers[String(q.question_number)] === code
+                            ? 'bg-[#1e2e68] text-white border-[#1e2e68]'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}
+                      >
+                        {code}
+                      </button>
+                    ))}
               </div>
             )}
 
-            {/* Parts 3, 4, 5: Single Text Input */}
-            {[3, 4, 5].includes(q.part_number) && (
+            {/* Parts 3 & 4: Single Text Input */}
+            {[3, 4].includes(q.part_number) && (
               <input
                 type="text"
                 placeholder="Type your answer here..."
@@ -236,15 +255,15 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
               />
             )}
 
-            {/* Part 6: Textarea for Essays */}
-            {q.part_number === 6 && (
+            {/* Part 5 & 6: Textarea for Essays */}
+            {[5, 6].includes(q.part_number) && (
               <textarea
                 rows={4}
                 placeholder="Type your comprehensive, biblically grounded answer..."
                 value={answers[String(q.question_number)] || ''}
                 onChange={(e) => {
                   handleInputChange(q.question_number, e.target.value);
-                  handleInputChange('essay', e.target.value);
+                  handleInputChange(`essay_${q.question_number}`, e.target.value);
                 }}
                 className="w-full border border-slate-200 p-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1e2e68]"
               />
@@ -255,12 +274,12 @@ export default function ExamClient({ courseId, userId }: ExamClientProps) {
         {/* Submit Action Button */}
         <button
           onClick={handleSubmit}
-        disabled={isSubmitting}
+          disabled={isSubmitting}
           className="w-full bg-amber-400 hover:bg-amber-300 active:bg-amber-500 text-slate-950 font-extrabold py-4 rounded-2xl shadow-lg transition-all text-base mt-6 disabled:opacity-60"
         >
           {isSubmitting
             ? 'Submitting Assessment...'
-            : 'Submit Foundational Assessment →'}
+            : 'Submit Assessment →'}
         </button>
       </main>
     </div>

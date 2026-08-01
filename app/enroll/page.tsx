@@ -43,7 +43,7 @@ export default function EnrollPage() {
     const cleanPhone = phoneNumber.trim().replace(/\s+/g, "");
     const cleanPassword = password.trim();
 
-    // STRICT CHECK: Ensure ALL fields have content (not just whitespace)
+    // STRICT CHECK: Ensure ALL fields have content
     if (
       !cleanFirstName ||
       !cleanLastName ||
@@ -105,14 +105,14 @@ export default function EnrollPage() {
       return;
     }
 
-    // 6. Insert application record
+    // 6. Insert application record into pending_enrollees
     const { error: insertError } = await supabase.from("pending_enrollees").insert([
       {
         first_name: cleanFirstName,
-        last_name: cleanLastName,
+        surname: cleanLastName, // 👈 Matched with SQL table schema ('surname')
         username: cleanUsername,
         email: cleanEmail,
-        phone_number: cleanPhone,
+        phone_number: cleanPhone, // 👈 Matched with SQL table schema ('phone_number')
         password_hash: cleanPassword,
       },
     ]);
@@ -270,7 +270,6 @@ export default function EnrollPage() {
                   </div>
                 </div>
 
-                {/* Data Privacy & Security Box */}
                 <div className="p-3.5 bg-slate-950/70 border border-slate-800/80 rounded-2xl flex items-start gap-3 my-2">
                   <div className="text-amber-400 text-base leading-none pt-0.5">🔒</div>
                   <p className="text-[11px] text-slate-300 leading-relaxed">

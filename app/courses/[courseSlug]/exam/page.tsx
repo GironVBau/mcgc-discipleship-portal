@@ -2,28 +2,39 @@ export const dynamic = "force-dynamic";
 
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import FoundationalExamPage from "./ExamClient";
+import ExamClient from "./ExamClient";
 
-export default async function ExamPage() {
+interface PageProps {
+  params: Promise<{
+    courseSlug: string;
+  }>;
+}
+
+export default async function ExamPage({ params }: PageProps) {
+  // 1. Get the current course slug from the URL (e.g., 'fundamentals-foundation' or 'foundational-discipleship')
+  const { courseSlug } = await params;
+
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) {
     redirect("/login");
   }
 
-  // 1. Fetch Course ID
+  // 2. Fetch Course ID automatically based on URL
   const { data: course } = await supabase
     .from("courses")
-    .select("id")
-    .eq("slug", "foundational-discipleship")
+    .select("id, title")
+    .eq("slug", courseSlug)
     .single();
 
   if (!course) {
     redirect("/courses");
   }
 
-  // 2. Verify all lessons are completed
+  // 3. Verify all lessons are completed
   const { data: lessons } = await supabase
     .from("lessons")
     .select("id")
@@ -39,10 +50,10 @@ export default async function ExamPage() {
 
   const completedCount = progress?.length || 0;
   if (completedCount < lessonIds.length || lessonIds.length === 0) {
-    redirect("/courses/foundational-discipleship");
+    redirect(`/courses/${courseSlug}`);
   }
 
-  // 3. Verify teacher approval
+  // 4. Verify teacher approval
   const { data: approval } = await supabase
     .from("exam_approvals")
     .select("is_approved")
@@ -51,8 +62,15 @@ export default async function ExamPage() {
     .maybeSingle();
 
   if (!approval?.is_approved) {
-    redirect("/courses/foundational-discipleship");
+    redirect(`/courses/${courseSlug}`);
   }
 
-  return <FoundationalExamPage courseId={course.id} userId={user.id} />;
+  return (
+    <ExamClient 
+      courseId={course.id} 
+      userId={user.id} 
+      courseSlug={courseSlug} 
+      courseTitle={course.title}
+    />
+  );
 }
