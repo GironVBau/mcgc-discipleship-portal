@@ -248,11 +248,11 @@ export default function AdminDashboard() {
         }
 
       } catch (err) {
-        console.error("Unexpected error loading admin dashboard:", err);
-      } font-medium {
-        setLoading(false);
-      }
-    }
+    console.error("Unexpected error loading admin dashboard:", err);
+  } finally {
+    setLoading(false);
+  }
+}
 
     loadAdminData();
   }, [supabase]);
