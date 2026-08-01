@@ -185,6 +185,54 @@ export default function AdminDashboard() {
 
         setActiveStudents(studentsData || []);
 
+        // 1. Fetch active courses
+        const { data: coursesData } = await supabase
+          .from("courses")
+          .select("id, title, slug");
+
+        // 2. Fetch existing exam approval records
+        const { data: approvalsData } = await supabase
+          .from("exam_approvals")
+          .select("*");
+
+        // 3. Combine students + courses so every student appears with an approval status
+        const approvalList: any[] = [];
+
+        if (studentsData && coursesData) {
+          studentsData.forEach((student) => {
+            coursesData.forEach((course) => {
+              // Find matching approval record if one exists
+              const matchingApproval = approvalsData?.find(
+                (a) => a.user_id === student.id && a.course_id === course.id
+              );
+
+              approvalList.push({
+                student_id: student.id,
+                student_name: student.full_name || student.email || "Unnamed Student",
+                student_email: student.email,
+                course_id: course.id,
+                course_title: course.title,
+                course_slug: course.slug,
+                is_approved: matchingApproval ? matchingApproval.is_approved : false,
+              });
+            });
+          });
+        }
+
+        // 4. Update state with the calculated list
+        // Note: Change 'setExamApprovals' if your state setter variable is named differently
+        setExamApprovals(approvalList);
+
+      } catch (err) {
+        console.error("Error loading admin data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadAdminData();
+  }, [supabase]);
+
         // Load Exam Approvals Data
         const { data: coursesData } = await supabase.from("courses").select("id, title");
         const { data: lessonsData } = await supabase.from("lessons").select("id, course_id");
