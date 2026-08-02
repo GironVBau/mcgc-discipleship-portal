@@ -26,7 +26,8 @@ import {
   Award,
   FileCheck,
   FileText,
-  KeyRound
+  KeyRound,
+  LayoutDashboard
 } from "lucide-react";
 
 // --- INTERFACES ---
@@ -46,6 +47,7 @@ interface ActiveStudent {
   username: string;
   email: string;
   role: string;
+  current_lesson?: string;
   created_at?: string;
 }
 
@@ -76,6 +78,14 @@ interface ExamSubmission {
   passed: boolean;
   status: string;
   submitted_at: string;
+}
+
+interface CalendarEvent {
+  id: string;
+  title: string;
+  event_date: string;
+  category: string;
+  created_at?: string;
 }
 
 interface ResetModalProps {
@@ -224,6 +234,14 @@ export default function AdminDashboard() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+
+  // Event Creation Modal State
+  const [isAddEventOpen, setIsAddEventOpen] = useState(false);
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventCategory, setNewEventCategory] = useState("event");
+  const [newEventDate, setNewEventDate] = useState(new Date().toISOString().split("T")[0]);
+  const [isSubmittingEvent, setIsSubmittingEvent] = useState(false);
 
   // Modal States
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
@@ -235,10 +253,9 @@ export default function AdminDashboard() {
   const [newUserEmail, setNewUserEmail] = useState("");
   const [newUserFullName, setNewUserFullName] = useState("");
   const [newUserRole, setNewUserRole] = useState("teacher");
-  const [courses, setCourses] = useState<CourseItem[]>([
-    { id: "1", title: "Discipleship 101: Foundations", instructor: "Pastor John", students_count: 24 },
-    { id: "2", title: "Leadership & Service", instructor: "Minister Sarah", students_count: 12 },
-  ]);
+
+  // Real Courses array
+  const [courses, setCourses] = useState<CourseItem[]>([]);
   const [newCourseTitle, setNewCourseTitle] = useState("");
   const [newCourseInstructor, setNewCourseInstructor] = useState("");
 
@@ -248,6 +265,74 @@ export default function AdminDashboard() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch Calendar Events
+  const fetchCalendarEvents = async () => {
+    const { data, error } = await supabase
+      .from("calendar_events")
+      .select("*")
+      .order("event_date", { ascending: true });
+
+    if (!error && data) {
+      setCalendarEvents(data);
+    }
+  };
+
+  // Fetch Real Courses safely without requiring an 'instructor' column
+  const fetchCourses = async () => {
+    const { data: coursesData, error } = await supabase
+      .from("courses")
+      .select("id, title");
+
+    if (error || !coursesData) {
+      console.error("Error loading courses:", error?.message, error?.details, error?.hint);
+      return;
+    }
+
+    const updatedCourses = await Promise.all(
+      coursesData.map(async (c: any) => {
+        let studentCount = 0;
+
+        // Strategy 1: Try fetching from course_enrollments table
+        const { count, error: enrollError } = await supabase
+          .from("course_enrollments")
+          .select("id", { count: "exact", head: true })
+          .eq("course_id", c.id);
+
+        if (!enrollError && count !== null) {
+          studentCount = count;
+        } else {
+          // Strategy 2: Fallback to calculating active progress via lessons & user_lesson_progress
+          const { data: lessons } = await supabase
+            .from("lessons")
+            .select("id")
+            .eq("course_id", c.id);
+
+          if (lessons && lessons.length > 0) {
+            const lessonIds = lessons.map((l) => l.id);
+            const { data: progress } = await supabase
+              .from("user_lesson_progress")
+              .select("user_id")
+              .in("lesson_id", lessonIds);
+
+            if (progress) {
+              const uniqueStudents = new Set(progress.map((p) => p.user_id));
+              studentCount = uniqueStudents.size;
+            }
+          }
+        }
+
+        return {
+          id: c.id,
+          title: c.title,
+          instructor: c.instructor || "Unassigned",
+          students_count: studentCount,
+        };
+      })
+    );
+
+    setCourses(updatedCourses);
+  };
 
   useEffect(() => {
     async function loadAdminData() {
@@ -298,13 +383,16 @@ export default function AdminDashboard() {
         // Fetch active students list
         const { data: studentsData } = await supabase
           .from("profiles")
-          .select("id, full_name, username, email, role, created_at")
+          .select("id, full_name, username, email, role, current_lesson, created_at")
           .eq("role", "student")
           .order("created_at", { ascending: false });
 
         setActiveStudents(studentsData || []);
 
-        // --- LOAD EXAM APPROVALS DATA (FIXED ALL-PROGRESS FETCH) ---
+        // Load Calendar Events & Courses
+        await Promise.all([fetchCalendarEvents(), fetchCourses()]);
+
+        // --- LOAD EXAM APPROVALS DATA ---
         const [
           { data: coursesData, error: coursesError },
           { data: lessonsData },
@@ -318,7 +406,7 @@ export default function AdminDashboard() {
         ]);
 
         if (coursesError) {
-          console.error("Error fetching courses for exam approvals:", coursesError);
+          console.error("Error fetching courses for exam approvals:", coursesError.message);
         }
 
         if (studentsData && coursesData) {
@@ -410,7 +498,7 @@ export default function AdminDashboard() {
 
       const { data: updatedStudents } = await supabase
         .from("profiles")
-        .select("id, full_name, username, email, role, created_at")
+        .select("id, full_name, username, email, role, current_lesson, created_at")
         .eq("role", "student")
         .order("created_at", { ascending: false });
 
@@ -484,22 +572,58 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddCourse = (e: React.FormEvent) => {
+  const handleAddCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCourseTitle) return;
 
-    setCourses((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        title: newCourseTitle,
-        instructor: newCourseInstructor || "Unassigned",
-        students_count: 0,
-      },
-    ]);
-    setNewCourseTitle("");
-    setNewCourseInstructor("");
-    setActionSuccess("New course created successfully.");
+    try {
+      const { data, error } = await supabase
+        .from("courses")
+        .insert([{ title: newCourseTitle }])
+        .select();
+
+      if (error) throw error;
+
+      setActionSuccess("New course created successfully!");
+      setNewCourseTitle("");
+      setNewCourseInstructor("");
+      await fetchCourses();
+    } catch (err: any) {
+      setActionError(err.message || "Failed to create course.");
+    }
+  };
+
+  // Handle Creating New Calendar Event in Supabase
+  const handleCreateCalendarEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEventTitle || !newEventDate) return;
+
+    setIsSubmittingEvent(true);
+    setActionError(null);
+
+    try {
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .insert([
+          {
+            title: newEventTitle,
+            event_date: newEventDate,
+            category: newEventCategory,
+          },
+        ])
+        .select();
+
+      if (error) throw error;
+
+      setActionSuccess("Calendar event created successfully!");
+      setNewEventTitle("");
+      setIsAddEventOpen(false);
+      await fetchCalendarEvents();
+    } catch (err: any) {
+      setActionError(err.message || "Failed to add calendar event.");
+    } finally {
+      setIsSubmittingEvent(false);
+    }
   };
 
   // Calendar Helpers
@@ -515,6 +639,16 @@ export default function AdminDashboard() {
   const handleNextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
+
+  const formatYMD = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const selectedDateStr = formatYMD(selectedDate);
+  const selectedDayEvents = calendarEvents.filter((ev) => ev.event_date === selectedDateStr);
 
   if (loading) {
     return (
@@ -543,13 +677,24 @@ export default function AdminDashboard() {
           </p>
         </div>
 
-        <button
-          onClick={handleSignOut}
-          className="inline-flex items-center space-x-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold rounded-xl transition-all self-start md:self-auto"
-        >
-          <LogOut className="w-4 h-4" />
-          <span>Sign Out</span>
-        </button>
+        <div className="flex items-center space-x-3 self-start md:self-auto">
+          {/* Switch to Teacher Dashboard Button */}
+          <button
+            onClick={() => router.push("/dashboard/teacher")}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold rounded-xl transition-all"
+          >
+            <LayoutDashboard className="w-4 h-4 text-indigo-400" />
+            <span>Switch to Teacher Dashboard</span>
+          </button>
+
+          <button
+            onClick={handleSignOut}
+            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-semibold rounded-xl transition-all"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
 
       <div className="max-w-7xl mx-auto space-y-8 mt-8">
@@ -600,7 +745,6 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* UPDATED EXAM APPROVALS METRIC CARD */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 backdrop-blur-md flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">Pending Exam Approvals</p>
@@ -637,19 +781,32 @@ export default function AdminDashboard() {
           ) : (
             <div className="grid gap-3">
               {activeStudents.map((student) => (
-                <div key={student.id} className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-white">{student.full_name || "Unnamed Student"}</p>
+                <div key={student.id} className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <p className="text-sm font-bold text-white">{student.full_name || "Unnamed Student"}</p>
+                      <span className="text-xs text-slate-500">(@{student.username})</span>
+                    </div>
                     <p className="text-xs text-slate-400">{student.email}</p>
+
+                    {/* Current Lesson Indicator */}
+                    <div className="flex items-center space-x-2 pt-1">
+                      <span className="text-[11px] text-slate-400">Current Progress:</span>
+                      <span className="text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-md">
+                        {student.current_lesson || "Has not started any lessons yet"}
+                      </span>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => setSelectedStudentForReset(student)}
-                    className="px-3.5 py-2 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Reset Password</span>
-                  </button>
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      onClick={() => setSelectedStudentForReset(student)}
+                      className="px-3.5 py-2 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Reset Password</span>
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -754,7 +911,7 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        {/* Real-time Calendar & Clock */}
+        {/* Real-time Supabase Calendar & Live Clock */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
             <div>
@@ -764,18 +921,31 @@ export default function AdminDashboard() {
               </h2>
             </div>
 
-            <div className="bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl flex items-center space-x-3 text-xs shrink-0 self-start sm:self-auto">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <div className="font-mono text-slate-200">
-                {currentTime ? (
-                  <>
-                    <span className="font-bold text-amber-400">{currentTime.toLocaleTimeString()}</span>
-                    <span className="text-slate-500 mx-1.5">•</span>
-                    <span>{currentTime.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
-                  </>
-                ) : (
-                  <span>Syncing clock...</span>
-                )}
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => {
+                  setNewEventDate(formatYMD(selectedDate));
+                  setIsAddEventOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center space-x-1.5 transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Event</span>
+              </button>
+
+              <div className="bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-2xl flex items-center space-x-3 text-xs shrink-0">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="font-mono text-slate-200">
+                  {currentTime ? (
+                    <>
+                      <span className="font-bold text-amber-400">{currentTime.toLocaleTimeString()}</span>
+                      <span className="text-slate-500 mx-1.5">•</span>
+                      <span>{currentTime.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
+                    </>
+                  ) : (
+                    <span>Syncing clock...</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -805,7 +975,9 @@ export default function AdminDashboard() {
 
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const dayNum = i + 1;
-                  const keyStr = `${year}-${currentMonth.getMonth()}-${dayNum}`;
+                  const iterDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum);
+                  const dateStr = formatYMD(iterDate);
+
                   const isToday = 
                     dayNum === new Date().getDate() && 
                     currentMonth.getMonth() === new Date().getMonth() && 
@@ -816,10 +988,12 @@ export default function AdminDashboard() {
                     currentMonth.getMonth() === selectedDate.getMonth() && 
                     currentMonth.getFullYear() === selectedDate.getFullYear();
 
+                  const hasEvent = calendarEvents.some((e) => e.event_date === dateStr);
+
                   return (
                     <button
-                      key={keyStr}
-                      onClick={() => setSelectedDate(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum))}
+                      key={dateStr}
+                      onClick={() => setSelectedDate(iterDate)}
                       className={`p-2.5 rounded-xl font-medium transition-all text-xs flex flex-col items-center justify-center relative ${
                         isSelected 
                           ? "bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-400/20" 
@@ -829,7 +1003,9 @@ export default function AdminDashboard() {
                       }`}
                     >
                       <span>{dayNum}</span>
-                      {isToday && !isSelected && <span className="w-1 h-1 bg-blue-400 rounded-full mt-0.5" />}
+                      {hasEvent && (
+                        <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-slate-950" : "bg-amber-400"}`} />
+                      )}
                     </button>
                   );
                 })}
@@ -839,20 +1015,25 @@ export default function AdminDashboard() {
             <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Selected Date</h3>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Events for Selected Date</h3>
                   <span className="text-xs font-bold text-amber-400">
                     {selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-blue-400">09:00 AM - 11:00 AM</span>
-                      <span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-[10px]">Class</span>
-                    </div>
-                    <p className="text-xs font-bold text-white">Discipleship 101 Session</p>
-                  </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {selectedDayEvents.length === 0 ? (
+                    <p className="text-xs text-slate-500 py-4 text-center">No events scheduled for this day.</p>
+                  ) : (
+                    selectedDayEvents.map((ev) => (
+                      <div key={ev.id} className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-blue-400 uppercase tracking-wider">{ev.category}</span>
+                        </div>
+                        <p className="text-xs font-bold text-white">{ev.title}</p>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -922,12 +1103,22 @@ export default function AdminDashboard() {
             </h2>
             <div className="space-y-3">
               <button
+                onClick={() => router.push("/dashboard/teacher")}
+                className="w-full text-left px-5 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold text-xs flex items-center justify-between transition-all"
+              >
+                <div className="flex items-center space-x-3">
+                  <LayoutDashboard className="w-4 h-4" />
+                  <span> Switch to Teacher Dashboard</span>
+                </div>
+              </button>
+
+              <button
                 onClick={() => setIsAddUserOpen(true)}
                 className="w-full text-left px-5 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold text-xs flex items-center justify-between transition-all"
               >
                 <div className="flex items-center space-x-3">
                   <UserPlus className="w-4 h-4" />
-                  <span>➕ Add New User / Staff / Student</span>
+                  <span> Add New User / Staff / Student</span>
                 </div>
               </button>
 
@@ -937,7 +1128,7 @@ export default function AdminDashboard() {
               >
                 <div className="flex items-center space-x-3">
                   <BookOpen className="w-4 h-4 text-slate-400" />
-                  <span>📚 Manage Courses & Discipleship Classes</span>
+                  <span> Manage Courses & Discipleship Classes</span>
                 </div>
               </button>
 
@@ -947,7 +1138,7 @@ export default function AdminDashboard() {
               >
                 <div className="flex items-center space-x-3">
                   <Lock className="w-4 h-4 text-slate-400" />
-                  <span>🔒 Security Settings</span>
+                  <span> Security Settings</span>
                 </div>
               </button>
             </div>
@@ -956,7 +1147,82 @@ export default function AdminDashboard() {
       </div>
 
       {/* --- ALL MODALS --- */}
-      
+
+      {/* Add Calendar Event Modal */}
+      {isAddEventOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+                <CalendarIcon className="w-5 h-5 text-blue-400" />
+                <span>Create Calendar Event</span>
+              </h3>
+              <button 
+                onClick={() => setIsAddEventOpen(false)} 
+                className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCalendarEvent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Event Title</label>
+                <input 
+                  type="text" 
+                  required
+                  value={newEventTitle}
+                  onChange={(e) => setNewEventTitle(e.target.value)}
+                  placeholder="e.g. Midterm Exam / Discipleship Class"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Date</label>
+                <input 
+                  type="date" 
+                  required
+                  value={newEventDate}
+                  onChange={(e) => setNewEventDate(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Category</label>
+                <select 
+                  value={newEventCategory} 
+                  onChange={(e) => setNewEventCategory(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="event">Event</option>
+                  <option value="assignment">Assignment</option>
+                  <option value="exam">Exam</option>
+                </select>
+              </div>
+
+              <div className="flex items-center space-x-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmittingEvent}
+                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 rounded-xl text-xs disabled:opacity-50"
+                >
+                  {isSubmittingEvent ? "Saving..." : "Create Event"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddEventOpen(false)}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Reset Student Password Modal */}
       <AdminResetStudentPasswordModal
         isOpen={!!selectedStudentForReset}
@@ -1060,17 +1326,21 @@ export default function AdminDashboard() {
             </div>
 
             <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
-              {courses.map((crs) => (
-                <div key={crs.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
-                  <div>
-                    <p className="font-bold text-white">{crs.title}</p>
-                    <p className="text-slate-400 text-[11px]">Instructor: {crs.instructor}</p>
+              {courses.length === 0 ? (
+                <p className="text-xs text-slate-500 py-4 text-center">No courses found in database.</p>
+              ) : (
+                courses.map((crs) => (
+                  <div key={crs.id} className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between text-xs">
+                    <div>
+                      <p className="font-bold text-white">{crs.title}</p>
+                      <p className="text-slate-400 text-[11px]">Instructor: {crs.instructor}</p>
+                    </div>
+                    <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full font-bold">
+                      {crs.students_count} {crs.students_count === 1 ? "student" : "students"}
+                    </span>
                   </div>
-                  <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full font-bold">
-                    {crs.students_count} students
-                  </span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
 
             <form onSubmit={handleAddCourse} className="space-y-3 pt-3 border-t border-slate-800">
@@ -1084,7 +1354,7 @@ export default function AdminDashboard() {
               />
               <input 
                 type="text"
-                placeholder="Instructor Name"
+                placeholder="Instructor Name (Optional)"
                 value={newCourseInstructor}
                 onChange={(e) => setNewCourseInstructor(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500"

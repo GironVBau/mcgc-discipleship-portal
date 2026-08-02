@@ -66,7 +66,6 @@ export default async function CoursesPage() {
         .eq('completed', true)
         .in('lesson_id', lessonIds);
 
-      // Level 1 lessons completed check
       allLevel1LessonsCompleted =
         (completedProgress?.length ?? 0) === level1Lessons.length;
     }
@@ -89,261 +88,277 @@ export default async function CoursesPage() {
   const isLevel3Unlocked = isSurveyUnlocked && completedSurvey;
 
   return (
-    <div className="max-w-4xl w-full mx-auto px-4 py-12 space-y-10">
-      <header className="text-center space-y-3">
-        <span className="text-xs font-bold uppercase tracking-widest text-[#1e2e68] bg-blue-100/80 px-3 py-1 rounded-full border border-blue-200">
-          MCGC Standard On-boarding Process
-        </span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900">
-          Discipleship and Ministry Readiness
-        </h1>
-        <p className="text-slate-600 text-sm max-w-lg mx-auto">
-          From foundational truth to mature faith. Every step of your spiritual
-          formation is tracked, guided, and celebrated.
-        </p>
-      </header>
+    <div className="min-h-screen bg-[#02050e] text-slate-100 sf-text antialiased relative overflow-hidden py-16 px-4 sm:px-6">
+      {/* Background Atmosphere Lights */}
+      <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-1/2 right-10 w-[400px] h-[400px] bg-amber-500/5 rounded-full blur-[140px] pointer-events-none" />
 
-      <div className="space-y-6">
-        {/* LEVEL 1 CARD */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full">
-                Level 1
-              </span>
+      <div className="max-w-4xl w-full mx-auto space-y-12 relative z-10">
+        
+        {/* Header Section */}
+        <header className="text-center space-y-3 max-w-2xl mx-auto">
+          <span className="inline-block sf-text text-[11px] font-semibold uppercase tracking-widest text-amber-400 bg-amber-400/10 px-3.5 py-1 rounded-full border border-amber-400/20">
+            MCGC Discipleship Pathway
+          </span>
+          <h1 className="sf-display text-3xl sm:text-4xl font-bold text-white tracking-tight pt-1">
+            Discipleship &amp; Ministry Readiness
+          </h1>
+          <p className="sf-text text-sm text-slate-400 leading-relaxed">
+            From foundational truth to mature faith. Track, guide, and fulfill every stage of your spiritual growth.
+          </p>
+        </header>
 
-              {/* Status Badges */}
-              {passedLevel1 ? (
-                <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                  ✓ Exam Passed
-                </span>
-              ) : canTakeLevel1Exam ? (
-                <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  ★ Exam Unlocked
-                </span>
-              ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
-                <span className="text-xs text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  ⏳ Awaiting Teacher Approval
-                </span>
+        {/* Roadmap Cards Container */}
+        <div className="relative space-y-6">
+
+          {/* LEVEL 1 CARD */}
+          <div className="bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl transition-all duration-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="sf-text text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-400/10 px-2.5 py-0.5 rounded-md border border-amber-400/20">
+                    Level 1
+                  </span>
+
+                  {/* Status Badges */}
+                  {passedLevel1 ? (
+                    <span className="sf-text text-[11px] text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-950/50 px-2.5 py-0.5 rounded-md border border-emerald-800/40">
+                      ✓ Exam Passed
+                    </span>
+                  ) : canTakeLevel1Exam ? (
+                    <span className="sf-text text-[11px] text-amber-300 font-bold bg-amber-950/50 px-2.5 py-0.5 rounded-md border border-amber-800/40">
+                      ★ Exam Unlocked
+                    </span>
+                  ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
+                    <span className="sf-text text-[11px] text-amber-400 font-medium bg-amber-950/40 px-2.5 py-0.5 rounded-md border border-amber-800/30">
+                      ⏳ Awaiting Teacher Approval
+                    </span>
+                  ) : (
+                    <span className="sf-text text-[11px] text-slate-500 font-normal">
+                      🔒 Complete all lessons to unlock exam
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="sf-display text-xl font-bold text-white tracking-tight">
+                  {foundationalCourse?.title || 'Foundational Discipleship'}
+                </h2>
+                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
+                  {foundationalCourse?.description ||
+                    'A foundational study for new believers covering the essential starting points of the Christian walk.'}
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+                <Link
+                  href="/courses/foundational-discipleship"
+                  className="sf-text text-center bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs px-5 py-3 rounded-xl border border-slate-700/80 transition-all shadow-sm"
+                >
+                  {passedLevel1 ? 'Review Track →' : 'View Lessons →'}
+                </Link>
+
+                {passedLevel1 ? (
+                  <Link
+                    href="/courses/foundational-discipleship/exam"
+                    className="sf-text text-center bg-slate-900 hover:bg-slate-800 text-slate-300 font-medium text-xs px-5 py-3 rounded-xl border border-slate-800 transition-all"
+                  >
+                    Retake Exam
+                  </Link>
+                ) : canTakeLevel1Exam ? (
+                  <Link
+                    href="/courses/foundational-discipleship/exam"
+                    className="sf-text text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-400/10 cursor-pointer"
+                  >
+                    Take Exam →
+                  </Link>
+                ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
+                  <button
+                    disabled
+                    className="sf-text bg-amber-950/40 text-amber-400/80 font-medium text-xs px-5 py-3 rounded-xl cursor-not-allowed border border-amber-800/30"
+                  >
+                    Pending Approval ⏳
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="sf-text bg-slate-900/80 text-slate-600 font-medium text-xs px-5 py-3 rounded-xl cursor-not-allowed border border-slate-800"
+                  >
+                    Exam Locked 🔒
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* LEVEL 2 CARD */}
+          <div
+            className={`bg-slate-900/60 border backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl transition-all duration-200 ${
+              isLevel2Unlocked
+                ? 'border-slate-800/80 opacity-100'
+                : 'border-slate-800/30 opacity-50 bg-slate-950/40'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`sf-text text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
+                      isLevel2Unlocked
+                        ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+                        : 'text-slate-500 bg-slate-800/40 border-slate-800'
+                    }`}
+                  >
+                    Level 2
+                  </span>
+
+                  {!isLevel2Unlocked && (
+                    <span className="sf-text text-[11px] text-amber-400/80 font-medium">
+                      🔒 Pass Level 1 Exam to unlock
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="sf-display text-xl font-bold text-white tracking-tight">
+                  {fundamentalCourse?.title || 'Fundamental Discipleship'}
+                </h2>
+                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
+                  {fundamentalCourse?.description ||
+                    'A systematic study of core Christian doctrine grounded in Scripture.'}
+                </p>
+              </div>
+
+              {isLevel2Unlocked ? (
+                <Link
+                  href="/courses/fundamental-discipleship"
+                  className="sf-text w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-lg shadow-amber-400/10"
+                >
+                  {passedLevel2 ? 'Review Track →' : 'Start Level 2 →'}
+                </Link>
               ) : (
-                <span className="text-xs text-slate-500 font-medium">
-                  🔒 Complete all lessons to unlock exam
-                </span>
+                <button
+                  disabled
+                  className="sf-text w-full sm:w-auto bg-slate-900/80 text-slate-600 font-medium text-xs px-6 py-3 rounded-xl cursor-not-allowed border border-slate-800"
+                >
+                  Locked
+                </button>
               )}
             </div>
-
-            <h2 className="text-xl font-bold text-slate-900">
-              {foundationalCourse?.title || 'Foundational Discipleship'}
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {foundationalCourse?.description ||
-                'A foundational study for new believers covering the essential starting points of the Christian walk.'}
-            </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-            {/* Primary Action: Go to Lessons */}
-            <Link
-              href="/courses/foundational-discipleship"
-              className="text-center bg-[#1e2e68] hover:bg-[#162350] text-white font-semibold text-sm px-5 py-3 rounded-xl transition-all shadow-sm"
-            >
-              {passedLevel1 ? 'Review Track →' : 'View Lessons →'}
-            </Link>
+          {/* BRIDGE: SPIRITUAL GIFTS SURVEY CARD */}
+          <div
+            className={`rounded-3xl p-6 sm:p-8 border backdrop-blur-xl shadow-2xl transition-all duration-200 ${
+              isSurveyUnlocked
+                ? 'bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 border-amber-500/30'
+                : 'bg-slate-900/40 border-slate-800/30 opacity-50'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`sf-text text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
+                      isSurveyUnlocked
+                        ? 'bg-amber-400 text-slate-950 border-amber-400'
+                        : 'bg-slate-800/40 text-slate-500 border-slate-800'
+                    }`}
+                  >
+                    Bridge Assessment
+                  </span>
 
-            {/* Conditional Exam Action */}
-            {passedLevel1 ? (
-              <Link
-                href="/courses/foundational-discipleship/exam"
-                className="text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm px-5 py-3 rounded-xl border border-slate-200 transition-all"
-              >
-                Retake Exam
-              </Link>
-            ) : canTakeLevel1Exam ? (
-              /* Unlocked: Lessons complete & approved by teacher */
-              <Link
-                href="/courses/foundational-discipleship/exam"
-                className="text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm px-5 py-3 rounded-xl transition-all shadow-md shadow-amber-400/20"
-              >
-                Take Exam →
-              </Link>
-            ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
-              /* Waiting for teacher approval */
-              <button
-                disabled
-                className="bg-amber-100 text-amber-800 font-semibold text-sm px-5 py-3 rounded-xl cursor-not-allowed border border-amber-200"
-              >
-                Pending Approval ⏳
-              </button>
-            ) : (
-              /* Locked: Lessons not finished */
-              <button
-                disabled
-                className="bg-slate-100 text-slate-400 font-semibold text-sm px-5 py-3 rounded-xl cursor-not-allowed border border-slate-200"
-              >
-                Exam Locked 🔒
-              </button>
-            )}
-          </div>
-        </div>
+                  {!isSurveyUnlocked && (
+                    <span className="sf-text text-[11px] text-amber-400/80 font-medium">
+                      🔒 Complete Levels 1 &amp; 2 first
+                    </span>
+                  )}
+                </div>
 
-        {/* LEVEL 2 CARD */}
-        <div
-          className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-            isLevel2Unlocked
-              ? 'border-slate-200 opacity-100'
-              : 'border-slate-200/60 opacity-60 bg-slate-50/50'
-          }`}
-        >
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                  isLevel2Unlocked
-                    ? 'text-blue-800 bg-blue-100'
-                    : 'text-slate-600 bg-slate-200'
-                }`}
-              >
-                Level 2
-              </span>
-              {!isLevel2Unlocked && (
-                <span className="text-xs text-amber-700 font-semibold">
-                  🔒 Pass Level 1 Exam to unlock
-                </span>
+                <h2 className="sf-display text-xl font-bold text-white tracking-tight">
+                  Spiritual Gifts Survey
+                </h2>
+                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
+                  Discover your primary ministry gifts and strengths. Required before unlocking Level 3: Ministry Readiness.
+                </p>
+              </div>
+
+              {isSurveyUnlocked ? (
+                <Link
+                  href="/spiritual-gifts-survey"
+                  className="sf-text w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-lg shadow-amber-400/10"
+                >
+                  {completedSurvey ? 'View / Retake Survey →' : 'Take Survey Now →'}
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="sf-text w-full sm:w-auto bg-slate-900/80 text-slate-600 font-medium text-xs px-6 py-3 rounded-xl cursor-not-allowed border border-slate-800"
+                >
+                  Locked
+                </button>
               )}
             </div>
-            <h2 className="text-xl font-bold text-slate-900">
-              {fundamentalCourse?.title || 'Fundamental Discipleship'}
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {fundamentalCourse?.description ||
-                'A systematic study of core Christian doctrine grounded in Scripture.'}
-            </p>
           </div>
-          {isLevel2Unlocked ? (
-            <Link
-              href="/courses/fundamental-discipleship"
-              className="w-full sm:w-auto text-center bg-[#1e2e68] hover:bg-[#162350] text-white font-semibold text-sm px-6 py-3 rounded-xl transition-all shadow-sm"
-            >
-              {passedLevel2 ? 'Review Track →' : 'Start Level 2 →'}
-            </Link>
-          ) : (
-            <button
-              disabled
-              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
-            >
-              Locked
-            </button>
-          )}
-        </div>
 
-        {/* BRIDGE: SPIRITUAL GIFTS SURVEY CARD */}
-        <div
-          className={`rounded-3xl p-6 sm:p-8 border shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-            isSurveyUnlocked
-              ? 'bg-gradient-to-br from-[#1e2e68] to-[#121c40] text-white border-blue-900'
-              : 'bg-white border-slate-200 opacity-60'
-          }`}
-        >
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                  isSurveyUnlocked
-                    ? 'bg-amber-400 text-slate-950'
-                    : 'bg-slate-200 text-slate-600'
-                }`}
-              >
-                Bridge Assessment
-              </span>
-              {!isSurveyUnlocked && (
-                <span className="text-xs text-amber-700 font-semibold">
-                  🔒 Complete Levels 1 & 2 first
-                </span>
+          {/* LEVEL 3 CARD */}
+          <div
+            className={`bg-slate-900/60 border backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl transition-all duration-200 ${
+              isLevel3Unlocked
+                ? 'border-slate-800/80 opacity-100'
+                : 'border-slate-800/30 opacity-50 bg-slate-950/40'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`sf-text text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${
+                      isLevel3Unlocked
+                        ? 'text-purple-400 bg-purple-500/10 border-purple-500/20'
+                        : 'text-slate-500 bg-slate-800/40 border-slate-800'
+                    }`}
+                  >
+                    Level 3
+                  </span>
+
+                  {!isLevel3Unlocked && (
+                    <span className="sf-text text-[11px] text-amber-400/80 font-medium">
+                      🔒 Complete Spiritual Gifts Survey to unlock
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="sf-display text-xl font-bold text-white tracking-tight">
+                  {ministryReadinessCourse?.title || 'Ministry Readiness Track'}
+                </h2>
+                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
+                  {ministryReadinessCourse?.description ||
+                    'Discover spiritual gifts, understand biblical ministry, and find your place of service in the church.'}
+                </p>
+              </div>
+
+              {isLevel3Unlocked ? (
+                <Link
+                  href="/courses/ministry-readiness"
+                  className="sf-text w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-lg shadow-amber-400/10"
+                >
+                  Start Level 3 →
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="sf-text w-full sm:w-auto bg-slate-900/80 text-slate-600 font-medium text-xs px-6 py-3 rounded-xl cursor-not-allowed border border-slate-800"
+                >
+                  Locked
+                </button>
               )}
             </div>
-            <h2
-              className={`text-xl font-bold ${
-                isSurveyUnlocked ? 'text-white' : 'text-slate-900'
-              }`}
-            >
-              Spiritual Gifts Survey
-            </h2>
-            <p
-              className={`text-xs leading-relaxed max-w-md ${
-                isSurveyUnlocked ? 'text-blue-100' : 'text-slate-600'
-              }`}
-            >
-              Discover your primary ministry gifts and strengths. Required
-              before unlocking Level 3: Ministry Readiness.
-            </p>
           </div>
-          {isSurveyUnlocked ? (
-            <Link
-              href="/spiritual-gifts-survey"
-              className="w-full sm:w-auto text-center bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-sm px-6 py-3 rounded-xl transition-all shadow-sm"
-            >
-              {completedSurvey
-                ? 'View / Retake Survey →'
-                : 'Take Survey Now →'}
-            </Link>
-          ) : (
-            <button
-              disabled
-              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
-            >
-              Locked
-            </button>
-          )}
-        </div>
 
-        {/* LEVEL 3 CARD */}
-        <div
-          className={`bg-white rounded-3xl p-6 sm:p-8 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 transition-all ${
-            isLevel3Unlocked
-              ? 'border-slate-200 opacity-100'
-              : 'border-slate-200/60 opacity-60 bg-slate-50/50'
-          }`}
-        >
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                  isLevel3Unlocked
-                    ? 'text-purple-800 bg-purple-100'
-                    : 'text-slate-600 bg-slate-200'
-                }`}
-              >
-                Level 3
-              </span>
-              {!isLevel3Unlocked && (
-                <span className="text-xs text-amber-700 font-semibold">
-                  🔒 Complete Spiritual Gifts Survey to unlock
-                </span>
-              )}
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">
-              {ministryReadinessCourse?.title || 'Ministry Readiness Track'}
-            </h2>
-            <p className="text-xs text-slate-600 leading-relaxed max-w-md">
-              {ministryReadinessCourse?.description ||
-                'Discover spiritual gifts, understand biblical ministry, and find your place of service in the church.'}
-            </p>
-          </div>
-          {isLevel3Unlocked ? (
-            <Link
-              href="/courses/ministry-readiness"
-              className="w-full sm:w-auto text-center bg-[#1e2e68] hover:bg-[#162350] text-white font-semibold text-sm px-6 py-3 rounded-xl transition-all shadow-sm"
-            >
-              Start Level 3 →
-            </Link>
-          ) : (
-            <button
-              disabled
-              className="w-full sm:w-auto bg-slate-200 text-slate-400 font-semibold text-sm px-6 py-3 rounded-xl cursor-not-allowed"
-            >
-              Locked
-            </button>
-          )}
         </div>
       </div>
     </div>

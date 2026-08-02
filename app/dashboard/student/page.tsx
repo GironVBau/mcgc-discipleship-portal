@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import Image from "next/image";
 import { 
   BookOpen, 
   Clock, 
@@ -20,7 +19,10 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  Plus,
+  Trash2,
+  CalendarDays
 } from "lucide-react";
 
 interface CourseData {
@@ -42,6 +44,21 @@ interface CertificateData {
   issued_at: string;
 }
 
+interface EventItem {
+  id: string;
+  dateStr: string; // YYYY-MM-DD
+  title: string;
+  type: "exam" | "assignment" | "reminder";
+}
+
+// Helper: Format Date to YYYY-MM-DD key for storage/lookups
+const getFormattedKey = (d: Date) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 // Instantiate client once outside component to prevent re-instantiation on renders
 const supabase = createClient();
 
@@ -60,22 +77,60 @@ export default function StudentDashboard() {
   const [hasPassedLevel1Exam, setHasPassedLevel1Exam] = useState(false);
   const [certificates, setCertificates] = useState<CertificateData[]>([]);
 
-  // Real-time Clock & Calendar state
+  // Real-time Clock & Interactive Calendar state
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Notes state
-  const [studentNote, setStudentNote] = useState("");
+  // Interactive Calendar Events & Date-specific Notes
+  const [events, setEvents] = useState<EventItem[]>([
+    {
+      id: "1",
+      dateStr: getFormattedKey(new Date()),
+      title: "Level 1 Review Session",
+      type: "reminder"
+    }
+  ]);
+  const [newEventTitle, setNewEventTitle] = useState("");
+  const [newEventType, setNewEventType] = useState<"exam" | "assignment" | "reminder">("reminder");
+
+  // General & Date Reflection Notes state
+  const [dateNotes, setDateNotes] = useState<Record<string, string>>({});
+  const [currentNote, setCurrentNote] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
 
+  const selectedDateKey = useMemo(() => getFormattedKey(selectedDate), [selectedDate]);
+
+  // Keep note input synced with the active selected date
+  useEffect(() => {
+    setCurrentNote(dateNotes[selectedDateKey] || "");
+  }, [selectedDateKey, dateNotes]);
+
+  // Fetch Supabase data & load cached local items (Runs ONLY once on mount / focus)
   const loadStudentData = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMessage(null);
 
-      const savedNote = localStorage.getItem("mcgc_student_reflection_note");
-      if (savedNote) setStudentNote(savedNote);
+      // Load saved notes and events from localStorage
+      const savedNotes = localStorage.getItem("mcgc_student_date_notes");
+      if (savedNotes) {
+        try {
+          setDateNotes(JSON.parse(savedNotes));
+        } catch (e) {
+          console.error("Failed to parse saved notes", e);
+        }
+      }
+
+      const savedEvents = localStorage.getItem("mcgc_student_events");
+      if (savedEvents) {
+        try {
+          setEvents(JSON.parse(savedEvents));
+        } catch (e) {
+          console.error("Failed to parse saved events", e);
+        }
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -102,7 +157,6 @@ export default function StudentDashboard() {
         setLevel2Course(l2);
 
         if (l1) {
-          // Parallel fetch for lessons & exam status
           const [lessonsRes, examRes] = await Promise.all([
             supabase
               .from("lessons")
@@ -128,7 +182,6 @@ export default function StudentDashboard() {
 
           const lessonIds = l1Lessons.map((l) => l.id);
 
-          // Fetch user progress
           if (lessonIds.length > 0) {
             const { data: progressData } = await supabase
               .from("user_lesson_progress")
@@ -157,7 +210,6 @@ export default function StudentDashboard() {
   useEffect(() => {
     setMounted(true);
     const now = new Date();
-    setCalendarDate(now);
     setCurrentTime(now);
 
     const timer = setInterval(() => {
@@ -175,10 +227,46 @@ export default function StudentDashboard() {
     };
   }, [loadStudentData]);
 
+  // Date selection handler
+  const handleSelectDate = (date: Date) => {
+    setSelectedDate(date);
+  };
+
+  // Save Note for currently selected date
   const handleSaveNote = () => {
-    localStorage.setItem("mcgc_student_reflection_note", studentNote);
+    const updatedNotes = {
+      ...dateNotes,
+      [selectedDateKey]: currentNote
+    };
+    setDateNotes(updatedNotes);
+    localStorage.setItem("mcgc_student_date_notes", JSON.stringify(updatedNotes));
     setNoteSaved(true);
     setTimeout(() => setNoteSaved(false), 2000);
+  };
+
+  // Add event/task to currently selected date
+  const handleAddEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEventTitle.trim()) return;
+
+    const newEv: EventItem = {
+      id: Date.now().toString(),
+      dateStr: selectedDateKey,
+      title: newEventTitle.trim(),
+      type: newEventType
+    };
+
+    const updatedEvents = [...events, newEv];
+    setEvents(updatedEvents);
+    localStorage.setItem("mcgc_student_events", JSON.stringify(updatedEvents));
+    setNewEventTitle("");
+  };
+
+  // Delete event from calendar
+  const handleDeleteEvent = (id: string) => {
+    const updated = events.filter((ev) => ev.id !== id);
+    setEvents(updated);
+    localStorage.setItem("mcgc_student_events", JSON.stringify(updated));
   };
 
   const handleSignOut = async () => {
@@ -186,7 +274,7 @@ export default function StudentDashboard() {
     window.location.href = "/login/student";
   };
 
-  // Memoized Calculations
+  // Calculations
   const totalLessons = lessons.length;
   const completedLessonsCount = completedLessonIds.size;
   
@@ -208,7 +296,7 @@ export default function StudentDashboard() {
     return "In Progress";
   }, [hasPassedLevel1Exam, completedLessonsCount]);
 
-  // Calendar Helpers
+  // Interactive Calendar Math & Helpers
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const year = calendarDate.getFullYear();
   const month = calendarDate.getMonth();
@@ -218,8 +306,19 @@ export default function StudentDashboard() {
   const handlePrevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
   const handleNextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
 
+  const handleJumpToToday = () => {
+    const now = new Date();
+    setCalendarDate(now);
+    setSelectedDate(now);
+  };
+
   const today = currentTime || new Date();
-  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+  const todayKey = getFormattedKey(today);
+
+  // Selected date events filter
+  const selectedDateEvents = useMemo(() => {
+    return events.filter((ev) => ev.dateStr === selectedDateKey);
+  }, [events, selectedDateKey]);
 
   if (loading || !mounted) {
     return (
@@ -249,33 +348,32 @@ export default function StudentDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans relative overflow-hidden">
-      {/* Background Lighting */}
+      {/* Ambient Lighting */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-[400px] h-[400px] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Top Header */}
-      <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 px-6 sm:px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Image
-              src="/1080.png"
-              alt="MCGC Logo"
-              width={36}
-              height={36}
-              className="object-contain"
-            />
-            <div>
-              <span className="text-sm font-bold text-white tracking-wide block">
-                MCGC Discipleship Portal
-              </span>
-              <span className="text-[10px] text-amber-400 font-semibold uppercase tracking-wider">
-                Student Journey
-              </span>
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-6 sm:px-8 py-8 sm:py-10 space-y-8 relative z-10">
+        
+        {/* Banner */}
+        <div className="bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl relative overflow-hidden shadow-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="relative z-10 space-y-2">
+            <div className="inline-flex items-center space-x-2 bg-amber-400/10 text-amber-400 text-xs font-bold px-3 py-1 rounded-full border border-amber-400/20">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Begin Your Journey</span>
             </div>
+            
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex flex-wrap items-center gap-3">
+              <span>Welcome, {userProfile?.full_name?.split(" ")[0] || "Student"}! 👋</span>
+            </h1>
+            
+            <p className="text-slate-400 text-sm max-w-xl">
+              Finish Level 1 lessons, pass your examination to receive your certificate, and unlock Level 2.
+            </p>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <div className="hidden sm:flex items-center space-x-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+          <div className="flex items-center space-x-3 shrink-0 relative z-10 self-start sm:self-center">
+            <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl">
               <User className="w-4 h-4 text-amber-400" />
               <span className="text-xs font-medium text-slate-300">
                 {userProfile?.full_name || "Student"}
@@ -284,38 +382,16 @@ export default function StudentDashboard() {
 
             <button
               onClick={handleSignOut}
-              className="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition-all"
+              className="text-slate-400 hover:text-white p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition-all"
               title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
-      </header>
-
-      {/* Main Dashboard Grid */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 sm:px-8 py-8 sm:py-10 space-y-8 relative z-10">
-        
-        {/* Welcome Banner */}
-        <div className="bg-gradient-to-r from-slate-900/90 via-slate-900/60 to-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl relative overflow-hidden shadow-2xl">
-          <div className="relative z-10 space-y-2">
-            <div className="inline-flex items-center space-x-2 bg-amber-400/10 text-amber-400 text-xs font-bold px-3 py-1 rounded-full border border-amber-400/20">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Begin Your Journey</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              Welcome, {userProfile?.full_name?.split(" ")[0] || "Student"}! 👋
-            </h1>
-            <p className="text-slate-400 text-sm max-w-xl">
-              Finish Level 1 lessons, pass your examination to receive your certificate, and unlock Level 2.
-            </p>
-          </div>
-        </div>
 
         {/* Dynamic Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          
-          {/* Level 1 Status Card */}
           <Link 
             href={level1Course ? `/courses/${level1Course.slug}` : "#"} 
             className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4 hover:border-amber-400/50 transition-all cursor-pointer group"
@@ -329,7 +405,6 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* Lesson Progress Card */}
           <Link 
             href={nextLesson && level1Course ? `/courses/${level1Course.slug}/lessons/lesson-${nextLesson.lesson_number}` : "#"} 
             className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4 hover:border-blue-500/50 transition-all cursor-pointer group"
@@ -343,7 +418,6 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* Certificates Card */}
           <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4">
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
               <Award className="w-6 h-6" />
@@ -355,10 +429,10 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* Main Grid Structure */}
+        {/* Dashboard Grid Structure */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Main Column */}
+          {/* Main Course Content Column */}
           <div className="lg:col-span-2 space-y-6">
             
             {/* LEVEL 1: Foundational Course */}
@@ -394,7 +468,7 @@ export default function StudentDashboard() {
                   </div>
                 </div>
 
-                {/* Next Up Action Box */}
+                {/* Next Action */}
                 {!hasPassedLevel1Exam && nextLesson && (
                   <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-5 space-y-4">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -428,7 +502,7 @@ export default function StudentDashboard() {
                   </div>
                 )}
 
-                {/* Roadmap List */}
+                {/* Lessons Roadmap */}
                 <div className="space-y-2 pt-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Level 1 Lessons Roadmap</p>
                   <div className="space-y-2">
@@ -474,7 +548,7 @@ export default function StudentDashboard() {
               </div>
             )}
 
-            {/* LEVEL 1 MILESTONE & EXAM GATE */}
+            {/* LEVEL 1 MILESTONE & EXAM */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <div>
@@ -578,17 +652,27 @@ export default function StudentDashboard() {
 
           </div>
 
-          {/* Sidebar Tools Column */}
+          {/* Interactive Sidebar Tools */}
           <div className="space-y-6">
             
-            {/* Interactive Calendar Widget */}
+            {/* FULLY INTERACTIVE CALENDAR WIDGET */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-4 shadow-xl">
+              
+              {/* Header Controls */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-white font-bold text-sm">
                   <CalendarIcon className="w-4 h-4 text-amber-400" />
                   <span>{calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}</span>
                 </div>
+                
                 <div className="flex items-center space-x-1">
+                  <button 
+                    onClick={handleJumpToToday}
+                    className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-2 py-1 rounded-md transition-colors mr-1"
+                    title="Jump to Today"
+                  >
+                    Today
+                  </button>
                   <button onClick={handlePrevMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
                     <ChevronLeft className="w-4 h-4" />
                   </button>
@@ -605,7 +689,7 @@ export default function StudentDashboard() {
                 ))}
               </div>
 
-              {/* Calendar Grid */}
+              {/* Interactive Calendar Days Grid */}
               <div className="grid grid-cols-7 gap-1 text-xs">
                 {Array.from({ length: firstDayOfMonth }).map((_, i) => (
                   <div key={`empty-${i}`} />
@@ -613,30 +697,126 @@ export default function StudentDashboard() {
 
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const dayNum = i + 1;
-                  const isToday = isCurrentMonth && today.getDate() === dayNum;
+                  const iterDate = new Date(year, month, dayNum);
+                  const iterKey = getFormattedKey(iterDate);
+
+                  const isToday = iterKey === todayKey;
+                  const isSelected = iterKey === selectedDateKey;
+
+                  // Check if this date has events or notes attached
+                  const hasEvents = events.some((ev) => ev.dateStr === iterKey);
+                  const hasNote = Boolean(dateNotes[iterKey]?.trim());
 
                   return (
-                    <div
+                    <button
                       key={dayNum}
-                      className={`h-7 flex items-center justify-center rounded-lg font-medium transition-colors ${
-                        isToday
-                          ? "bg-amber-400 text-slate-950 font-bold shadow-md shadow-amber-400/20"
-                          : "text-slate-300 hover:bg-slate-800"
+                      type="button"
+                      onClick={() => handleSelectDate(iterDate)}
+                      className={`h-8 flex flex-col items-center justify-center rounded-xl font-medium transition-all relative ${
+                        isSelected
+                          ? "bg-amber-400 text-slate-950 font-extrabold shadow-lg shadow-amber-400/20 scale-105 z-10"
+                          : isToday
+                          ? "bg-slate-800 text-amber-400 border border-amber-400/40 font-bold"
+                          : "text-slate-300 hover:bg-slate-800/80"
                       }`}
                     >
-                      {dayNum}
-                    </div>
+                      <span>{dayNum}</span>
+
+                      {/* Event / Note Indicators */}
+                      {!isSelected && (hasEvents || hasNote) && (
+                        <div className="flex space-x-0.5 mt-0.5">
+                          {hasEvents && <div className="w-1 h-1 rounded-full bg-blue-400" />}
+                          {hasNote && <div className="w-1 h-1 rounded-full bg-emerald-400" />}
+                        </div>
+                      )}
+                    </button>
                   );
                 })}
               </div>
+
+              {/* Date Selected Header Banner */}
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                <span className="font-semibold text-slate-300 flex items-center gap-1.5">
+                  <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
+                  {selectedDate.toLocaleDateString("default", { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+                {selectedDateKey === todayKey && (
+                  <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                    Today
+                  </span>
+                )}
+              </div>
+
+              {/* Schedule & Event Manager for Selected Date */}
+              <div className="space-y-2 pt-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  Tasks for {selectedDate.toLocaleDateString("default", { month: "short", day: "numeric" })}
+                </p>
+                
+                {selectedDateEvents.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {selectedDateEvents.map((ev) => (
+                      <div 
+                        key={ev.id} 
+                        className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            ev.type === "exam" ? "bg-red-400" : ev.type === "assignment" ? "bg-amber-400" : "bg-blue-400"
+                          }`} />
+                          <span className="text-slate-200 truncate">{ev.title}</span>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteEvent(ev.id)}
+                          className="text-slate-500 hover:text-red-400 p-1 transition-colors"
+                          title="Remove Event"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">No tasks set for this date.</p>
+                )}
+
+                {/* Inline Add Event Form */}
+                <form onSubmit={handleAddEvent} className="flex gap-1.5 pt-1">
+                  <input
+                    type="text"
+                    value={newEventTitle}
+                    onChange={(e) => setNewEventTitle(e.target.value)}
+                    placeholder="Add task/event..."
+                    className="flex-1 bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-400/50"
+                  />
+                  <select
+                    value={newEventType}
+                    onChange={(e) => setNewEventType(e.target.value as any)}
+                    className="bg-slate-950/80 border border-slate-800 rounded-lg px-1.5 text-[10px] text-slate-400 focus:outline-none"
+                  >
+                    <option value="reminder">Task</option>
+                    <option value="assignment">Due</option>
+                    <option value="exam">Exam</option>
+                  </select>
+                  <button
+                    type="submit"
+                    className="bg-amber-400 hover:bg-amber-300 text-slate-950 p-1.5 rounded-lg transition-colors flex items-center justify-center shrink-0"
+                    title="Add Event"
+                  >
+                    <Plus className="w-4 h-4 font-bold" />
+                  </button>
+                </form>
+              </div>
+
             </div>
 
-            {/* Personal Reflections Notepad Widget */}
+            {/* DATE-SPECIFIC REFLECTIONS NOTEPAD WIDGET */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-3 shadow-xl">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-white font-bold text-sm">
                   <StickyNote className="w-4 h-4 text-amber-400" />
-                  <span>Discipleship Notes</span>
+                  <span>Notes ({selectedDate.toLocaleDateString("default", { month: "short", day: "numeric" })})</span>
                 </div>
                 {noteSaved && (
                   <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
@@ -646,18 +826,19 @@ export default function StudentDashboard() {
               </div>
 
               <textarea
-                value={studentNote}
-                onChange={(e) => setStudentNote(e.target.value)}
-                placeholder="Write your prayers, reflections, or takeaways here..."
+                value={currentNote}
+                onChange={(e) => setCurrentNote(e.target.value)}
+                placeholder={`Write reflections or takeaways for ${selectedDate.toLocaleDateString("default", { month: "short", day: "numeric" })}...`}
                 className="w-full h-28 bg-slate-950/80 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-400/50 resize-none"
               />
 
               <button
+                type="button"
                 onClick={handleSaveNote}
                 className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs py-2 rounded-xl transition-all flex items-center justify-center space-x-1.5"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>Save Reflections</span>
+                <span>Save Date Note</span>
               </button>
             </div>
 

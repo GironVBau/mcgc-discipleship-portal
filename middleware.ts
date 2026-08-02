@@ -18,7 +18,7 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          response = NextResponse.next({ request });
+          // Update response cookies directly without re-instantiating response
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -27,7 +27,7 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Retrieve current user session from JWT token
+  // Retrieve current user session
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -35,24 +35,23 @@ export async function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   const pathname = url.pathname;
 
-  // 1. PUBLIC ROUTES (Accessible by anyone without logging in)
+  // 1. PUBLIC ROUTES
   const isPublicRoute =
     pathname === "/" ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/enroll") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/_next") ||
-    pathname.includes("."); // Static assets, favicons, images
+    pathname.includes("."); // Static assets
 
   // 2. UNAUTHENTICATED USER PROTECTION
-  // If user is NOT logged in and tries to access ANY protected route
   if (!user && !isPublicRoute) {
     url.pathname = "/login/student";
     url.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(url);
   }
 
-  // 3. ROLE-BASED ACCESS CONTROL (Fast JWT Metadata Check)
+  // 3. ROLE-BASED ACCESS CONTROL
   if (user) {
     const userRole = user.user_metadata?.role || "student";
 
@@ -68,6 +67,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // RESTRICTION 2: Teachers cannot access Admin routes
+    // (Note: Admins are NOT restricted from /dashboard/teacher!)
     if (
       userRole === "teacher" &&
       (pathname.startsWith("/dashboard/admin") ||
@@ -77,7 +77,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // REDIRECT logged-in users away from auth pages if they hit /login
+    // REDIRECT logged-in users away from auth/login pages
     if (pathname.startsWith("/login")) {
       switch (userRole) {
         case "admin":
@@ -98,7 +98,6 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
-// 4. ROUTE MATCHER
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",

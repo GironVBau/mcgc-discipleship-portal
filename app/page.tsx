@@ -196,7 +196,7 @@ export default function Home() {
               href="/login/student"
               className="group relative bg-gradient-to-r from-amber-300 via-amber-400 to-amber-500 hover:from-amber-200 hover:to-amber-400 text-slate-950 font-semibold px-6 py-3 rounded-xl flex items-center justify-center space-x-2 transition-all duration-300 shadow-md active:scale-[0.98] hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-2 focus:ring-offset-slate-950 w-full sm:w-auto tracking-wider uppercase text-xs"
             >
-              <span>Student Portal</span>
+              <span>Sign in</span>
               <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform text-slate-950 stroke-[2.5]" />
             </Link>
 

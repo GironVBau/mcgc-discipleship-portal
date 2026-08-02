@@ -27,7 +27,7 @@ export default function Navbar() {
             </div>
             <div className="flex flex-col">
               <span className="font-black text-sm sm:text-base text-white tracking-tight leading-none group-hover:text-amber-400 transition-colors">
-                MCGC Portal
+                MCGC Standard On-boarding Process | SOP
               </span>
               <span className="text-[10px] text-slate-400 font-medium tracking-wide mt-1 truncate max-w-[200px] sm:max-w-none">
                 Ministry of Christ&apos;s Great Commission Church Inc.
@@ -57,7 +57,7 @@ export default function Navbar() {
               href="/enroll"
               className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold px-4 py-2 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-amber-400/10 flex items-center space-x-1.5 active:scale-[0.98]"
             >
-              <span>Enroll Now</span>
+              <span>Create Account</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>

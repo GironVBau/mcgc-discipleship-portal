@@ -24,7 +24,6 @@ export default async function LessonPage({ params }: PageProps) {
   if (courseError || !course) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-       
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6">
             <h2 className="text-xl font-bold text-slate-900">Course Not Found</h2>
@@ -55,8 +54,7 @@ export default async function LessonPage({ params }: PageProps) {
   if (lessonError || !lesson) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-        
-                <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6">
             <h2 className="text-xl font-bold text-slate-900">Lesson Not Found</h2>
             <Link
@@ -71,7 +69,7 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
-  // 3. Fetch Next Lesson (Queries lesson_number directly)
+  // 3. Fetch Next Lesson
   const { data: nextLesson } = await supabase
     .from('lessons')
     .select('lesson_number')
@@ -81,12 +79,41 @@ export default async function LessonPage({ params }: PageProps) {
     .limit(1)
     .maybeSingle();
 
-  const nextLessonSlug = nextLesson 
-    ? `lesson-${nextLesson.lesson_number}` 
-    : null;
+  const nextLessonSlug = nextLesson ? `lesson-${nextLesson.lesson_number}` : null;
 
-  // 4. User Progress Tracking
+  // 4. User Progress Tracking & Prerequisite Gatekeeper
   const { data: { user } } = await supabase.auth.getUser();
+
+  // GATEKEEPER: Block access if prerequisite isn't passed
+  if (user && course.prerequisite_course_slug) {
+    const { data: previousExam } = await supabase
+      .from("student_exam_submissions")
+      .select("passed")
+      .eq("user_id", user.id)
+      .eq("course_slug", course.prerequisite_course_slug)
+      .eq("passed", true)
+      .maybeSingle();
+
+    if (!previousExam) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 font-sans">
+          <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-lg text-center space-y-6">
+            <h2 className="text-xl font-bold text-slate-900">Access Restricted</h2>
+            <p className="text-slate-600 text-sm">
+              You must pass the exam for the previous course before you can view lessons in this course.
+            </p>
+            <Link
+              href={`/courses/${course.prerequisite_course_slug}/exam`}
+              className="inline-block w-full bg-[#1e2e68] text-white text-sm font-semibold py-3 rounded-xl hover:bg-[#162350] transition-all"
+            >
+              Go to Exam
+            </Link>
+          </div>
+        </div>
+      );
+    }
+  }
+
   let initialIsStudied = false;
   if (user) {
     const { data: progress } = await supabase
@@ -101,7 +128,7 @@ export default async function LessonPage({ params }: PageProps) {
     }
   }
 
-  // 5. Content Extractor Helper Function for Structured SQL Data
+  // 5. Content Extractor Helper Function
   const rawPoints: string[] = lesson.teaching_points || [];
 
   const snapshot = rawPoints.find(p => p.startsWith('LESSON SNAPSHOT:'))?.replace('LESSON SNAPSHOT:', '').trim();
@@ -112,7 +139,6 @@ export default async function LessonPage({ params }: PageProps) {
   const walkingWithChrist = rawPoints.find(p => p.startsWith('WALKING WITH CHRIST THIS WEEK:'))?.replace('WALKING WITH CHRIST THIS WEEK:', '').trim();
   const assurance = rawPoints.find(p => p.startsWith('ASSURANCE OF SALVATION:'))?.replace('ASSURANCE OF SALVATION:', '').trim();
 
-  // Filter regular main points out of special metadata prefixes
   const mainPoints = rawPoints.filter(p => 
     !p.startsWith('LESSON SNAPSHOT:') &&
     !p.startsWith('FOUNDATIONAL DOCTRINE:') &&
@@ -126,13 +152,10 @@ export default async function LessonPage({ params }: PageProps) {
   return (
     <ContentProtection>
       <div className="min-h-screen bg-slate-50 flex flex-col font-sans antialiased">
-        
         <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
           {/* Breadcrumb Header */}
           <nav className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-            <Link href="/courses" className="hover:text-[#1e2e68] transition-colors">
-              Courses
-            </Link>
+            <Link href="/courses" className="hover:text-[#1e2e68] transition-colors">Courses</Link>
             <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
             </svg>
