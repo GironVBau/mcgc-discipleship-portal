@@ -9,7 +9,6 @@ import {
   Clock, 
   Award, 
   ArrowRight, 
-  FileText, 
   LogOut, 
   User, 
   Sparkles,
@@ -18,8 +17,10 @@ import {
   Calendar as CalendarIcon,
   Save,
   Check,
+  CheckCircle2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from "lucide-react";
 
 interface CourseData {
@@ -41,9 +42,12 @@ interface CertificateData {
   issued_at: string;
 }
 
+// Instantiate client once outside component to prevent re-instantiation on renders
+const supabase = createClient();
+
 export default function StudentDashboard() {
-  const supabase = createClient();
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<{ full_name: string } | null>(null);
 
   // Dynamic Course & Progress state
@@ -68,6 +72,7 @@ export default function StudentDashboard() {
   const loadStudentData = useCallback(async () => {
     try {
       setLoading(true);
+      setErrorMessage(null);
 
       const savedNote = localStorage.getItem("mcgc_student_reflection_note");
       if (savedNote) setStudentNote(savedNote);
@@ -75,7 +80,7 @@ export default function StudentDashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Primary parallel fetches
+      // Primary parallel fetch
       const [
         { data: profile },
         { data: coursesData },
@@ -90,7 +95,6 @@ export default function StudentDashboard() {
       if (certsData) setCertificates(certsData);
 
       if (coursesData && coursesData.length > 0) {
-        // Query courses dynamically by slug
         const l1 = coursesData.find((c) => c.slug === "foundational-discipleship") || coursesData[0];
         const l2 = coursesData.find((c) => c.slug === "leadership-discipleship") || null;
 
@@ -98,11 +102,8 @@ export default function StudentDashboard() {
         setLevel2Course(l2);
 
         if (l1) {
-          // Level 1 dependent queries
-          const [
-            { data: lessonsData },
-            { data: examData }
-          ] = await Promise.all([
+          // Parallel fetch for lessons & exam status
+          const [lessonsRes, examRes] = await Promise.all([
             supabase
               .from("lessons")
               .select("id, lesson_number, title")
@@ -118,12 +119,16 @@ export default function StudentDashboard() {
               .maybeSingle()
           ]);
 
-          const l1Lessons = lessonsData || [];
+          const l1Lessons = lessonsRes.data || [];
           setLessons(l1Lessons);
+
+          if (examRes.data?.passed) {
+            setHasPassedLevel1Exam(true);
+          }
 
           const lessonIds = l1Lessons.map((l) => l.id);
 
-          // Fetch exact user progress for Level 1 lessons
+          // Fetch user progress
           if (lessonIds.length > 0) {
             const { data: progressData } = await supabase
               .from("user_lesson_progress")
@@ -139,18 +144,15 @@ export default function StudentDashboard() {
               setCompletedLessonIds(new Set(completedIds));
             }
           }
-
-          if (examData?.passed) {
-            setHasPassedLevel1Exam(true);
-          }
         }
       }
     } catch (err) {
       console.error("Error loading dashboard data:", err);
+      setErrorMessage("Unable to sync dashboard data. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -164,7 +166,6 @@ export default function StudentDashboard() {
 
     loadStudentData();
 
-    // Re-fetch data whenever user navigates back to tab
     const handleFocus = () => loadStudentData();
     window.addEventListener("focus", handleFocus);
 
@@ -185,18 +186,27 @@ export default function StudentDashboard() {
     window.location.href = "/login/student";
   };
 
-  // Calculations
+  // Memoized Calculations
   const totalLessons = lessons.length;
   const completedLessonsCount = completedLessonIds.size;
-  const progressPercentage = totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
-  const allLessonsCompleted = completedLessonsCount === totalLessons && totalLessons > 0;
-  const nextLesson = lessons.find((l) => !completedLessonIds.has(l.id)) || lessons[0];
+  
+  const progressPercentage = useMemo(() => {
+    return totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
+  }, [completedLessonsCount, totalLessons]);
 
-  const courseStatus = hasPassedLevel1Exam
-    ? "Level 1 Completed"
-    : completedLessonsCount === 0 
-    ? "Not Started" 
-    : "In Progress";
+  const allLessonsCompleted = useMemo(() => {
+    return completedLessonsCount === totalLessons && totalLessons > 0;
+  }, [completedLessonsCount, totalLessons]);
+
+  const nextLesson = useMemo(() => {
+    return lessons.find((l) => !completedLessonIds.has(l.id)) || lessons[0];
+  }, [lessons, completedLessonIds]);
+
+  const courseStatus = useMemo(() => {
+    if (hasPassedLevel1Exam) return "Level 1 Completed";
+    if (completedLessonsCount === 0) return "Not Started";
+    return "In Progress";
+  }, [hasPassedLevel1Exam, completedLessonsCount]);
 
   // Calendar Helpers
   const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -218,6 +228,21 @@ export default function StudentDashboard() {
           <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm font-semibold">Loading Discipleship Portal...</span>
         </div>
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center font-sans space-y-4">
+        <p className="text-red-400 text-sm font-semibold">{errorMessage}</p>
+        <button
+          onClick={loadStudentData}
+          className="inline-flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl transition-all"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Retry Connection</span>
+        </button>
       </div>
     );
   }
@@ -287,7 +312,7 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* Dynamic Quick Stats (Interactive Links) */}
+        {/* Dynamic Quick Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           
           {/* Level 1 Status Card */}
@@ -421,7 +446,11 @@ export default function StudentDashboard() {
                           }`}
                         >
                           <div className="flex items-center space-x-3">
-                            <Clock className={`w-4 h-4 shrink-0 ${isCompleted ? "text-emerald-400" : "text-slate-500"}`} />
+                            {isCompleted ? (
+                              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                            ) : (
+                              <Clock className="w-4 h-4 shrink-0 text-slate-500" />
+                            )}
                             <span className={isCompleted ? "text-slate-200 font-medium" : "text-slate-400"}>
                               Lesson {lesson.lesson_number}: {lesson.title}
                             </span>
@@ -560,10 +589,10 @@ export default function StudentDashboard() {
                   <span>{calendarDate.toLocaleString("default", { month: "long", year: "numeric" })}</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <button onClick={handlePrevMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+                  <button onClick={handlePrevMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <button onClick={handleNextMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800">
+                  <button onClick={handleNextMonth} className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>

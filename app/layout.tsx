@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer"; // 1. Import your Footer component
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,7 +16,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "MCGC Discipleship Portal",
-  description: "Ministry of Christ's Great Commission Church Inc. Discipleship Portal",
+  description:
+    "Ministry of Christ's Great Commission Church Inc. Discipleship Portal for Standard On-boarding Process (S.O.P)",
 };
 
 export default function RootLayout({
@@ -26,21 +28,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+      <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-amber-400 selection:text-slate-950">
+        {/* Sticky Dynamic Glassmorphic Navbar */}
         <Navbar />
+
+        {/* Page Content */}
         <main className="flex-1 flex flex-col">{children}</main>
 
-        {/* Global Footer */}
-        <footer className="w-full bg-slate-950 border-t border-slate-900 py-6 text-center text-xs text-slate-400 font-sans mt-auto">
-          <p className="flex items-center justify-center space-x-1">
-            <span>Designed &amp; Developed by</span>
-            <span className="font-semibold text-slate-200">
-              Viz Giron
-            </span>
-          </p>
-        </footer>
+        {/* 2. Global Footer */}
+        <Footer />
       </body>
     </html>
   );
