@@ -382,35 +382,34 @@ export default function AdminDashboard() {
   };
 
   const handleApproveStudent = (requestId: string, studentName: string) => {
-  setActionError(null);
-  setActionSuccess(null);
+    setActionError(null);
+    setActionSuccess(null);
 
-  startTransition(async () => {
-    try {
-      const res = await approveEnrollee(requestId);
-      
-      if (res && !res.success) {
-        setActionError(res.error || "Failed to approve student.");
-        return;
+    startTransition(async () => {
+      try {
+        const res = await approveEnrollee(requestId);
+        
+        if (!res.success) {
+          setActionError(res.error || "Failed to approve student.");
+          return;
+        }
+
+        setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        setStudentCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
+        setActionSuccess(`Approved and activated account for ${studentName}!`);
+
+        const { data: updatedStudents } = await supabase
+          .from("profiles")
+          .select("id, full_name, username, email, role, created_at")
+          .eq("role", "student")
+          .order("created_at", { ascending: false });
+
+        setActiveStudents(updatedStudents || []);
+      } catch (err: any) {
+        setActionError(err.message || "Failed to activate student.");
       }
-
-      setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
-      setStudentCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-      setActionSuccess(`Approved and activated account for ${studentName}!`);
-
-      // Refresh active list
-      const { data: updatedStudents } = await supabase
-        .from("profiles")
-        .select("id, full_name, username, email, role, created_at")
-        .eq("role", "student")
-        .order("created_at", { ascending: false });
-
-      setActiveStudents(updatedStudents || []);
-    } catch (err: any) {
-      setActionError(err.message || "Failed to activate student.");
-    }
-  });
-};
+    });
+  };
 
   const handleRejectStudent = (requestId: string) => {
     if (!confirm("Are you sure you want to reject and remove this application?")) return;
