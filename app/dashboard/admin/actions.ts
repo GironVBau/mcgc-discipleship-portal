@@ -8,7 +8,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error(
-    "Missing Supabase environment variables! Ensure SUPABASE_SERVICE_ROLE_KEY is configured in .env.local"
+    "Missing Supabase environment variables! Ensure SUPABASE_SERVICE_ROLE_KEY is configured in Vercel or .env.local"
   );
 }
 
@@ -55,23 +55,22 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
       return { success: false, error: "Pending application not found." };
     }
 
+    const rawPassword = enrollee.password_hash || enrollee.password;
+    if (!rawPassword) {
+      return { success: false, error: "Cannot approve: No password found in application record." };
+    }
+
     const firstName = enrollee.first_name || "";
     const surname = enrollee.surname || enrollee.last_name || "";
     const fullName = `${firstName} ${surname}`.trim() || enrollee.email;
     const username = enrollee.username || enrollee.email.split("@")[0];
     const phoneNumber = enrollee.phone_number || enrollee.phone || "";
-    const userPassword = enrollee.password_hash || enrollee.password;
 
-    if (!userPassword || userPassword.length < 6) {
-      return { success: false, error: "Cannot approve: Password must be at least 6 characters long." };
-    }
+    // Check if the password is a pre-hashed BCrypt string or raw plain-text
+    const isBcrypt = rawPassword.startsWith("$2a$") || rawPassword.startsWith("$2b$") || rawPassword.startsWith("$2y$");
 
-    let userId: string | undefined;
-
-    // 2. Create user in Supabase Auth
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    const createUserPayload: any = {
       email: enrollee.email,
-      password: userPassword,
       email_confirm: true,
       user_metadata: {
         first_name: firstName,
@@ -81,9 +80,27 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
         phone_number: phoneNumber,
         role: "student",
       },
-    });
+    };
+
+    if (isBcrypt) {
+      // Pass directly to Supabase Auth's password_hash field
+      createUserPayload.password_hash = rawPassword;
+    } else {
+      // Enforce minimum password length requirement for plain-text
+      if (rawPassword.length < 6) {
+        return { success: false, error: "Cannot approve: Password must be at least 6 characters long." };
+      }
+      createUserPayload.password = rawPassword;
+    }
+
+    let userId: string | undefined;
+
+    // 2. Create user in Supabase Auth
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser(createUserPayload);
 
     if (authError) {
+      console.error("Auth creation failed:", authError);
+
       if (authError.message?.includes("already been registered") || authError.status === 422) {
         const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
         const existingUser = usersData?.users?.find((u) => u.email === enrollee.email);
@@ -94,7 +111,7 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
           return { success: false, error: `Auth Error: ${authError.message}` };
         }
       } else {
-        return { success: false, error: `Auth Error: ${authError.message}` };
+        return { success: false, error: `Auth Error: ${authError.message || "Failed to create user in Auth system."}` };
       }
     } else {
       userId = authUser.user.id;
