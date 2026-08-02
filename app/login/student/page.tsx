@@ -4,13 +4,15 @@ import { useState, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ShieldAlert, UserCheck, ArrowLeft } from "lucide-react";
 
 function StudentLoginForm() {
-  const [identifier, setIdentifier] = useState(""); // Email or Username
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const supabase = createClient();
   const router = useRouter();
@@ -88,6 +90,12 @@ function StudentLoginForm() {
     router.push(redirectTo);
   };
 
+  const toggleForgotPassword = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowForgotPassword((prev) => !prev);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
       {/* Background Lighting */}
@@ -101,101 +109,140 @@ function StudentLoginForm() {
             MCGC Discipleship Platform
           </span>
           <h1 className="text-3xl font-extrabold text-white tracking-tight pt-2">
-            Welcome Back
+            {showForgotPassword ? "Account Recovery" : "Welcome Back"}
           </h1>
           <p className="text-sm text-slate-400">
-            Sign in to continue your spiritual learning journey
+            {showForgotPassword
+              ? "Follow instructions to reset your password"
+              : "Sign in to continue your spiritual learning journey"}
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="grid grid-cols-2 p-1 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
-          <button className="py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 shadow-md transition-all">
-            Student Portal
-          </button>
-          <Link
-            href="/login/staff"
-            className="py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all text-center flex items-center justify-center"
-          >
-            Staff / Teacher
-          </Link>
-        </div>
+        {!showForgotPassword && (
+          <div className="grid grid-cols-2 p-1 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
+            <button className="py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-amber-400 shadow-md transition-all">
+              Student Portal
+            </button>
+            <Link
+              href="/login/staff"
+              className="py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-all text-center flex items-center justify-center"
+            >
+              Staff / Teacher
+            </Link>
+          </div>
+        )}
 
         {/* Card */}
         <div className="bg-slate-900/60 border border-slate-800 backdrop-blur-xl p-8 rounded-3xl shadow-2xl space-y-6">
-          {errorMessage && (
-            <div className="p-4 text-xs font-medium text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-2xl">
-              {errorMessage}
-            </div>
-          )}
-
-          <form onSubmit={handleStudentLogin} className="space-y-5">
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">
-                Username or Email
-              </label>
-              <input
-                type="text"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="student_username or student@church.org"
-                required
-                className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all placeholder:text-slate-600"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-300">
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-semibold text-amber-400 hover:underline transition-colors"
-                >
-                  Forgot password?
-                </Link>
+          {showForgotPassword ? (
+            /* Forgot Password View */
+            <div className="space-y-5">
+              <div className="p-5 bg-amber-500/10 border border-amber-500/20 text-slate-200 rounded-2xl text-xs space-y-3">
+                <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm">
+                  <ShieldAlert className="w-5 h-5 shrink-0" />
+                  <span>Need help signing in?</span>
+                </div>
+                <p className="text-slate-300 leading-relaxed">
+                  If you've forgotten your password, please contact{" "}
+                  <strong className="text-white font-semibold">Viz Giron</strong> for account recovery.
+                </p>
+                <div className="pt-2 border-t border-amber-500/20 flex items-center space-x-2 text-slate-400">
+                  <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    Your password can be securely reset after your identity is verified.
+                  </span>
+                </div>
               </div>
 
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all placeholder:text-slate-600"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-200"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold py-3.5 rounded-xl shadow-lg shadow-amber-400/10 transition-all text-sm disabled:opacity-50"
-            >
-              {loading ? "Signing In..." : "Log In as Student →"}
-            </button>
-          </form>
-
-          <div className="pt-2 text-center">
-            <p className="text-xs text-slate-400">
-              Need an account?{" "}
-              <Link
-                href="/enroll"
-                className="text-amber-400 font-bold hover:underline"
+              <button
+                type="button"
+                onClick={toggleForgotPassword}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl flex items-center justify-center space-x-2 text-xs transition-all cursor-pointer"
               >
-                Enroll Now
-              </Link>
-            </p>
-          </div>
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Login</span>
+              </button>
+            </div>
+          ) : (
+            /* Standard Login Form */
+            <>
+              {errorMessage && (
+                <div className="p-4 text-xs font-medium text-rose-400 bg-rose-950/40 border border-rose-800/50 rounded-2xl">
+                  {errorMessage}
+                </div>
+              )}
+
+              <form onSubmit={handleStudentLogin} className="space-y-5">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Username or Email
+                  </label>
+                  <input
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="student_username or student@church.org"
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={toggleForgotPassword}
+                      className="text-xs font-semibold text-amber-400 hover:underline transition-colors cursor-pointer"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                      className="w-full bg-slate-950 border border-slate-800 text-white text-sm px-4 py-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all placeholder:text-slate-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 hover:text-slate-200 cursor-pointer"
+                    >
+                      {showPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold py-3.5 rounded-xl shadow-lg shadow-amber-400/10 transition-all text-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? "Signing In..." : "Log In as Student →"}
+                </button>
+              </form>
+
+              <div className="pt-2 text-center">
+                <p className="text-xs text-slate-400">
+                  Need an account?{" "}
+                  <Link
+                    href="/enroll"
+                    className="text-amber-400 font-bold hover:underline"
+                  >
+                    Enroll Now
+                  </Link>
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Back Link */}

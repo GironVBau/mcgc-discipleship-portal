@@ -14,10 +14,10 @@ export default function Navbar() {
         />
         <div>
           <p className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Ministry of Christ&apos;s Great Commission
+            Ministry of Christ&apos;s Great Commission Church Inc.
           </p>
           <h1 className="text-sm sm:text-base font-bold leading-tight text-slate-900">
-            Discipleship Portal
+            Discipleship Portal for Standard On-boarding Process (S.O.P) 
           </h1>
         </div>
       </Link>
@@ -33,7 +33,7 @@ export default function Navbar() {
           href="/login/staff"
           className="text-xs sm:text-sm font-medium text-slate-700 hover:text-blue-900 transition-colors"
         >
-          Sign In
+          Dashboard
         </Link>
         <Link
           href="/enroll"

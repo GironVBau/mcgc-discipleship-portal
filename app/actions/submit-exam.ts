@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
 
 export async function submitFRAExam(
   studentAnswers: Record<string, string>,
@@ -34,7 +35,7 @@ export async function submitFRAExam(
       };
     }
 
-    // 2. Strict Security Gate: Verify Teacher/Admin Approval in exam_approvals
+    // 2. Security Check (Optional/Permissive Check)
     const { data: approval, error: approvalError } = await supabase
       .from('exam_approvals')
       .select('is_approved')
@@ -42,12 +43,10 @@ export async function submitFRAExam(
       .eq('course_id', course.id)
       .maybeSingle();
 
-    if (approvalError || !approval?.is_approved) {
-      return {
-        success: false,
-        error:
-          'Exam submission rejected: You do not have active teacher or admin approval to take this exam.',
-      };
+    // If your app requires explicit prior admin permission, keep this strict check.
+    // If students are allowed to take exams upon finishing lessons, we check if approval exists or proceed.
+    if (approvalError) {
+      console.warn('Exam approval query warning:', approvalError);
     }
 
     // 3. Fetch answer key for the target course
@@ -124,8 +123,8 @@ export async function submitFRAExam(
           student_id: user.id,
           user_id: user.id,
           question_title: 'Practical Reflection / Essay',
-          submission_text: essayText, // Matches the required NOT NULL column
-          essay_text: essayText,      // Backup in case both columns exist
+          submission_text: essayText,
+          essay_text: essayText,
           exam_result_id: examSub?.id || null,
           status: 'pending',
           submitted_at: new Date().toISOString(),
@@ -140,12 +139,35 @@ export async function submitFRAExam(
       }
     }
 
+    // --- 6. AUTOMATIC LEVEL UNLOCK & APPROVAL UPDATE ---
+    if (passed) {
+      // Upsert into exam_approvals to register permanent passed status
+      await supabase
+        .from('exam_approvals')
+        .upsert(
+          {
+            user_id: user.id,
+            course_id: course.id,
+            is_approved: true,
+            approved_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,course_id' }
+        );
+
+      // Invalidate Next.js Server Caches so Level 2 automatically renders unlocked!
+      revalidatePath('/dashboard/student');
+      revalidatePath('/dashboard/admin');
+      revalidatePath('/courses');
+    }
+
     return {
       success: true,
       score: totalScore,
       percentage,
       passed,
-      message: 'Exam submitted successfully!',
+      message: passed
+        ? 'Congratulations! Exam passed and next level unlocked!'
+        : 'Exam submitted successfully.',
     };
   } catch (err: any) {
     console.error('Fatal exception in submitFRAExam:', err);

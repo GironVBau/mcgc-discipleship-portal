@@ -1,34 +1,15 @@
 'use client';
 
-import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
-import { ArrowLeft, KeyRound, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, KeyRound, ShieldAlert, UserCheck, Mail } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  // Replace this with your actual email address
+  const developerEmail = "earpointn@gmail.com"; 
 
-  const handleReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-    setError('');
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
-    });
-
-    if (error) {
-      setError(error.message);
-    } else {
-      setMessage('Password reset link sent! Please check your email inbox.');
-    }
-    setLoading(false);
+  const handleContactClick = () => {
+    window.location.href = `mailto:${developerEmail}?subject=Password%20Reset%20Request%20-%20MCGC%20Portal&body=Hi%20Viz,%0A%0AI%20forgot%20my%20password%20for%20the%20MCGC%20Discipleship%20Portal.%20My%20registered%20full%20name%20is:%20`;
   };
 
   return (
@@ -52,54 +33,36 @@ export default function ForgotPasswordPage() {
                 className="object-contain drop-shadow-lg"
               />
             </div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">
-              Reset Your Password
+            <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center justify-center gap-2">
+              <KeyRound className="w-6 h-6 text-amber-400" />
+              <span>Need help signing in?</span>
             </h1>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Enter your registered email address and we'll send you a link to restore account access.
-            </p>
           </div>
 
-          {/* Feedback Messages */}
-          {message && (
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl text-xs flex items-center space-x-3">
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
-              <span>{message}</span>
+          {/* Contact Developer Notice */}
+          <div className="p-5 bg-amber-500/10 border border-amber-500/20 text-slate-200 rounded-2xl text-xs space-y-3">
+            <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm">
+              <ShieldAlert className="w-5 h-5 shrink-0" />
+              <span>Manual Password Reset Required</span>
             </div>
-          )}
-
-          {error && (
-            <div className="p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs flex items-center space-x-3">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400" />
-              <span>{error}</span>
+            <p className="text-slate-300 leading-relaxed">
+              If you've forgotten your password, please contact <strong className="text-white">Viz Giron</strong> (Creator & System Developer) for assistance.
+            </p>
+            <div className="pt-2 border-t border-amber-500/20 flex items-center space-x-2 text-slate-400">
+              <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Your password can be securely reset after your identity is verified.</span>
             </div>
-          )}
+          </div>
 
-          {/* Form */}
-          <form onSubmit={handleReset} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="student@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 text-white p-3.5 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:border-amber-400 transition-all placeholder:text-slate-600"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold py-3.5 rounded-xl flex items-center justify-center space-x-2 transition-all shadow-lg shadow-amber-400/10 text-sm disabled:opacity-50"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>{loading ? 'Sending link...' : 'Send Reset Link'}</span>
-            </button>
-          </form>
+          {/* Action Button */}
+          <button
+            onClick={handleContactClick}
+            type="button"
+            className="w-full bg-amber-400 hover:bg-amber-300 active:scale-[0.99] text-slate-950 font-extrabold py-3.5 rounded-xl flex items-center justify-center space-x-2 transition-all shadow-lg shadow-amber-400/10 text-sm"
+          >
+            <Mail className="w-4 h-4" />
+            <span>Contact System Developer</span>
+          </button>
 
           {/* Back to Login Link */}
           <div className="pt-2 text-center border-t border-slate-800/60">
