@@ -304,7 +304,7 @@ export default function AdminDashboard() {
 
         setActiveStudents(studentsData || []);
 
-        // --- LOAD EXAM APPROVALS DATA (FIXED) ---
+        // --- LOAD EXAM APPROVALS DATA (FIXED ALL-PROGRESS FETCH) ---
         const [
           { data: coursesData, error: coursesError },
           { data: lessonsData },
@@ -313,7 +313,7 @@ export default function AdminDashboard() {
         ] = await Promise.all([
           supabase.from("courses").select("id, title"),
           supabase.from("lessons").select("id, course_id"),
-          supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true),
+          supabase.from("user_lesson_progress").select("user_id, lesson_id, completed"),
           supabase.from("exam_approvals").select("user_id, course_id, is_approved")
         ]);
 
@@ -331,14 +331,13 @@ export default function AdminDashboard() {
 
               const lessonIds = new Set(courseLessons.map((l) => l.id));
               const userCompletedCount = progressData?.filter(
-                (p) => p.user_id === st.id && lessonIds.has(p.lesson_id)
+                (p) => p.user_id === st.id && lessonIds.has(p.lesson_id) && p.completed === true
               ).length || 0;
 
               const approval = approvalsData?.find(
                 (a) => a.user_id === st.id && a.course_id === crs.id
               );
 
-              // Push status for every student-course pair (no guard clause discarding them)
               statuses.push({
                 studentId: st.id,
                 studentName: st.full_name || st.email,
@@ -601,12 +600,16 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* FIXED EXAM APPROVALS METRIC CARD */}
+          {/* UPDATED EXAM APPROVALS METRIC CARD */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 backdrop-blur-md flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">Pending Exam Approvals</p>
               <p className="text-3xl font-black text-amber-400 mt-1">
-                {examStudentStatuses.filter((s) => !s.isApproved && s.totalLessons > 0 && s.completedLessons >= s.totalLessons).length}
+                {
+                  examStudentStatuses.filter(
+                    (s) => !s.isApproved && s.completedLessons > 0
+                  ).length
+                }
               </p>
             </div>
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400">
