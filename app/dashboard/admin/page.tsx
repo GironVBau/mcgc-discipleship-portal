@@ -25,9 +25,11 @@ import {
   Lock,
   Award,
   FileCheck,
-  FileText
+  FileText,
+  KeyRound
 } from "lucide-react";
 
+// --- INTERFACES ---
 interface PendingEnrollee {
   id: string;
   first_name: string;
@@ -76,6 +78,122 @@ interface ExamSubmission {
   submitted_at: string;
 }
 
+interface ResetModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  student: { id: string; full_name: string; email: string } | null;
+  onSuccess: (msg: string) => void;
+}
+
+// --- ADMIN RESET STUDENT PASSWORD MODAL COMPONENT ---
+function AdminResetStudentPasswordModal({
+  isOpen,
+  onClose,
+  student,
+  onSuccess,
+}: ResetModalProps) {
+  const [newPassword, setNewPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isOpen || !student) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/reset-student-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: student.id,
+          newPassword: newPassword,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update password');
+      }
+
+      onSuccess(`Successfully changed password for ${student.full_name}!`);
+      setNewPassword('');
+      onClose();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+            <Lock className="w-5 h-5 text-amber-400" />
+            <span>Reset Student Password</span>
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-sm font-bold text-white">{student.full_name}</p>
+          <p className="text-xs text-slate-400">{student.email}</p>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">
+              New Temporary Password
+            </label>
+            <input
+              type="text"
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="e.g. Student2026!"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div className="flex items-center space-x-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50"
+            >
+              {loading ? 'Updating...' : 'Set New Password'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --- MAIN ADMIN DASHBOARD COMPONENT ---
 export default function AdminDashboard() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -111,6 +229,7 @@ export default function AdminDashboard() {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+  const [selectedStudentForReset, setSelectedStudentForReset] = useState<ActiveStudent | null>(null);
 
   // Form states for modals
   const [newUserEmail, setNewUserEmail] = useState("");
@@ -130,12 +249,9 @@ export default function AdminDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Main Data Loading Effect
   useEffect(() => {
     async function loadAdminData() {
       try {
-        setLoading(true);
-
         const { data: { user }, error: authError } = await supabase.auth.getUser();
 
         if (authError || !user) {
@@ -188,16 +304,11 @@ export default function AdminDashboard() {
 
         setActiveStudents(studentsData || []);
 
-        // Fetch courses, lessons, progress, and exam approvals
+        // Load Exam Approvals Data
         const { data: coursesData } = await supabase.from("courses").select("id, title");
         const { data: lessonsData } = await supabase.from("lessons").select("id, course_id");
-        const { data: progressData } = await supabase
-          .from("user_lesson_progress")
-          .select("user_id, lesson_id")
-          .eq("completed", true);
-        const { data: approvalsData } = await supabase
-          .from("exam_approvals")
-          .select("user_id, course_id, is_approved");
+        const { data: progressData } = await supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true);
+        const { data: approvalsData } = await supabase.from("exam_approvals").select("user_id, course_id, is_approved");
 
         if (studentsData && coursesData) {
           const statuses: StudentExamStatus[] = [];
@@ -476,6 +587,44 @@ export default function AdminDashboard() {
               <Award className="w-6 h-6" />
             </div>
           </div>
+        </div>
+
+        {/* Active Students List (With Reset Password Button) */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <GraduationCap className="w-5 h-5 text-amber-400" />
+              <span>Active Enrolled Students</span>
+            </h2>
+            <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1 rounded-full border border-slate-700">
+              {activeStudents.length} Total
+            </span>
+          </div>
+
+          {activeStudents.length === 0 ? (
+            <div className="p-8 text-center bg-slate-950/40 border border-slate-800/60 rounded-2xl">
+              <p className="text-xs text-slate-400 font-medium">No active student records found.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {activeStudents.map((student) => (
+                <div key={student.id} className="p-4 bg-slate-950/80 border border-slate-800/80 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-white">{student.full_name || "Unnamed Student"}</p>
+                    <p className="text-xs text-slate-400">{student.email}</p>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedStudentForReset(student)}
+                    className="px-3.5 py-2 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Reset Password</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Student Exam Gatekeeper Approvals */}
@@ -777,7 +926,17 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* MODALS SECTION */}
+      {/* --- ALL MODALS --- */}
+      
+      {/* Reset Student Password Modal */}
+      <AdminResetStudentPasswordModal
+        isOpen={!!selectedStudentForReset}
+        onClose={() => setSelectedStudentForReset(null)}
+        student={selectedStudentForReset}
+        onSuccess={(msg) => setActionSuccess(msg)}
+      />
+
+      {/* Add User Modal */}
       {isAddUserOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
@@ -854,6 +1013,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Course Management Modal */}
       {isCourseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative">
@@ -912,6 +1072,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* Security Settings Modal */}
       {isSecurityModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">

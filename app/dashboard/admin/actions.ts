@@ -41,7 +41,7 @@ async function deleteUserStorageFiles(bucketName: string, folderPath: string) {
 /**
  * APPROVE ENROLLEE
  * Creates real user in Supabase Auth & profiles table, then deletes from pending queue.
- * Handles pre-existing Auth records safely without throwing errors.
+ * Matches exact PostgreSQL schema: surname, phone_number, username.
  */
 export async function approveEnrollee(requestId: string) {
   // 1. Fetch pending applicant details
@@ -55,10 +55,16 @@ export async function approveEnrollee(requestId: string) {
     throw new Error("Pending application not found.");
   }
 
-  // Ensure password meets length requirement
+  // Ensure password meets minimum length requirement
   if (!enrollee.password_hash || enrollee.password_hash.length < 6) {
     throw new Error("Cannot approve student: Password must be at least 6 characters long.");
   }
+
+  const firstName = enrollee.first_name || "";
+  const surname = enrollee.surname || enrollee.last_name || "";
+  const fullName = `${firstName} ${surname}`.trim() || enrollee.email;
+  const username = enrollee.username || enrollee.email.split("@")[0];
+  const phoneNumber = enrollee.phone_number || enrollee.phone || "";
 
   let userId: string;
 
@@ -68,11 +74,11 @@ export async function approveEnrollee(requestId: string) {
     password: enrollee.password_hash,
     email_confirm: true,
     user_metadata: {
-      first_name: enrollee.first_name,
-      last_name: enrollee.last_name,
-      full_name: `${enrollee.first_name} ${enrollee.last_name}`,
-      username: enrollee.username,
-      phone_number: enrollee.phone_number,
+      first_name: firstName,
+      surname: surname,
+      full_name: fullName,
+      username: username,
+      phone_number: phoneNumber,
       role: "student",
     },
   });
@@ -95,22 +101,24 @@ export async function approveEnrollee(requestId: string) {
     userId = authUser.user.id;
   }
 
-  // 3. Upsert user into public.profiles table
+  // 3. Upsert user into public.profiles table using exact database column names
   const { error: profileError } = await supabaseAdmin.from("profiles").upsert([
     {
       id: userId,
-      first_name: enrollee.first_name,
-      last_name: enrollee.last_name,
-      full_name: `${enrollee.first_name} ${enrollee.last_name}`,
-      username: enrollee.username,
+      first_name: firstName,
+      surname: surname,              // Matches public.profiles column
+      full_name: fullName,
+      username: username,            // Saves username to public.profiles
       email: enrollee.email,
-      phone: enrollee.phone_number,
+      phone_number: phoneNumber,     // Matches public.profiles column
       role: "student",
+      updated_at: new Date().toISOString(),
     },
   ]);
 
   if (profileError) {
-    console.error("Profile creation warning:", profileError.message);
+    console.error("Profile creation error:", profileError.message);
+    throw new Error(`Profile creation failed: ${profileError.message}`);
   }
 
   // 4. Remove record from pending queue
