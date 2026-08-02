@@ -34,7 +34,7 @@ async function deleteUserStorageFiles(bucketName: string, folderPath: string) {
 /**
  * APPROVE ENROLLEE
  */
-ort async function approveEnrollee(requestId: string): Promise<{ success: boolean; error?: string }> {
+export async function approveEnrollee(requestId: string): Promise<{ success: boolean; error?: string }> {
   try {
     // 1. Fetch pending applicant details
     const { data: enrollee, error: fetchError } = await supabaseAdmin
