@@ -92,7 +92,7 @@ function AdminResetStudentPasswordModal({
   student,
   onSuccess,
 }: ResetModalProps) {
-  const [newPassword, setNewPassword] = useState('');
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,9 +104,9 @@ function AdminResetStudentPasswordModal({
     setError(null);
 
     try {
-      const response = await fetch('/api/admin/reset-student-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/admin/reset-student-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId: student.id,
           newPassword: newPassword,
@@ -116,11 +116,11 @@ function AdminResetStudentPasswordModal({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to update password');
+        throw new Error(result.error || "Failed to update password");
       }
 
       onSuccess(`Successfully changed password for ${student.full_name}!`);
-      setNewPassword('');
+      setNewPassword("");
       onClose();
     } catch (err: any) {
       setError(err.message);
@@ -177,7 +177,7 @@ function AdminResetStudentPasswordModal({
               disabled={loading}
               className="flex-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition-all disabled:opacity-50"
             >
-              {loading ? 'Updating...' : 'Set New Password'}
+              {loading ? "Updating..." : "Set New Password"}
             </button>
             <button
               type="button"
@@ -304,11 +304,22 @@ export default function AdminDashboard() {
 
         setActiveStudents(studentsData || []);
 
-        // Load Exam Approvals Data
-        const { data: coursesData } = await supabase.from("courses").select("id, title");
-        const { data: lessonsData } = await supabase.from("lessons").select("id, course_id");
-        const { data: progressData } = await supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true);
-        const { data: approvalsData } = await supabase.from("exam_approvals").select("user_id, course_id, is_approved");
+        // --- LOAD EXAM APPROVALS DATA (FIXED) ---
+        const [
+          { data: coursesData, error: coursesError },
+          { data: lessonsData },
+          { data: progressData },
+          { data: approvalsData }
+        ] = await Promise.all([
+          supabase.from("courses").select("id, title"),
+          supabase.from("lessons").select("id, course_id"),
+          supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true),
+          supabase.from("exam_approvals").select("user_id, course_id, is_approved")
+        ]);
+
+        if (coursesError) {
+          console.error("Error fetching courses for exam approvals:", coursesError);
+        }
 
         if (studentsData && coursesData) {
           const statuses: StudentExamStatus[] = [];
@@ -317,8 +328,6 @@ export default function AdminDashboard() {
             coursesData.forEach((crs) => {
               const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
               const totalLessons = courseLessons.length;
-              
-              if (totalLessons === 0) return;
 
               const lessonIds = new Set(courseLessons.map((l) => l.id));
               const userCompletedCount = progressData?.filter(
@@ -329,6 +338,7 @@ export default function AdminDashboard() {
                 (a) => a.user_id === st.id && a.course_id === crs.id
               );
 
+              // Push status for every student-course pair (no guard clause discarding them)
               statuses.push({
                 studentId: st.id,
                 studentName: st.full_name || st.email,
@@ -386,7 +396,6 @@ export default function AdminDashboard() {
     setActionSuccess(null);
 
     try {
-      // 1. Call server action outside startTransition to prevent React fiber crashes
       const res = await approveEnrollee(requestId);
       
       if (!res || !res.success) {
@@ -394,14 +403,12 @@ export default function AdminDashboard() {
         return;
       }
 
-      // 2. Perform UI state transitions smoothly
       startTransition(() => {
         setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
         setStudentCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
         setActionSuccess(`Approved and activated account for ${studentName}!`);
       });
 
-      // 3. Refresh active students list
       const { data: updatedStudents } = await supabase
         .from("profiles")
         .select("id, full_name, username, email, role, created_at")
@@ -594,20 +601,21 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* FIXED EXAM APPROVALS METRIC CARD */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 backdrop-blur-md flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">Exam Approvals</p>
-              <p className="text-3xl font-black text-emerald-400 mt-1">
-                {examStudentStatuses.filter((s) => s.isApproved).length}
+              <p className="text-xs font-semibold uppercase text-slate-400 tracking-wider">Pending Exam Approvals</p>
+              <p className="text-3xl font-black text-amber-400 mt-1">
+                {examStudentStatuses.filter((s) => !s.isApproved && s.totalLessons > 0 && s.completedLessons >= s.totalLessons).length}
               </p>
             </div>
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400">
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400">
               <Award className="w-6 h-6" />
             </div>
           </div>
         </div>
 
-        {/* Active Students List (With Reset Password Button) */}
+        {/* Active Students List */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-white flex items-center space-x-2">
@@ -659,12 +667,12 @@ export default function AdminDashboard() {
 
           {examStudentStatuses.length === 0 ? (
             <div className="p-8 text-center bg-slate-950/40 border border-slate-800/60 rounded-2xl">
-              <p className="text-xs text-slate-400 font-medium">No students or course lessons found.</p>
+              <p className="text-xs text-slate-400 font-medium">No students or course records found.</p>
             </div>
           ) : (
             <div className="grid gap-3">
               {examStudentStatuses.map((st) => {
-                const isFullyComplete = st.completedLessons === st.totalLessons && st.totalLessons > 0;
+                const isFullyComplete = st.totalLessons > 0 && st.completedLessons >= st.totalLessons;
 
                 return (
                   <div
@@ -760,7 +768,7 @@ export default function AdminDashboard() {
                   <>
                     <span className="font-bold text-amber-400">{currentTime.toLocaleTimeString()}</span>
                     <span className="text-slate-500 mx-1.5">•</span>
-                    <span>{currentTime.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                    <span>{currentTime.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</span>
                   </>
                 ) : (
                   <span>Syncing clock...</span>
@@ -830,7 +838,7 @@ export default function AdminDashboard() {
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Selected Date</h3>
                   <span className="text-xs font-bold text-amber-400">
-                    {selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {selectedDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                   </span>
                 </div>
 
