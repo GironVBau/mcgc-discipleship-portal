@@ -25,16 +25,21 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
  */
 async function deleteUserStorageFiles(bucketName: string, folderPath: string) {
   try {
-    const { data: files } = await supabaseAdmin.storage
+    const { data: files, error } = await supabaseAdmin.storage
       .from(bucketName)
       .list(folderPath);
+
+    if (error) {
+      console.warn(`Notice: Failed to list files in '${bucketName}/${folderPath}':`, error.message);
+      return;
+    }
 
     if (files && files.length > 0) {
       const pathsToDelete = files.map((file) => `${folderPath}/${file.name}`);
       await supabaseAdmin.storage.from(bucketName).remove(pathsToDelete);
     }
   } catch (err) {
-    console.warn(`Notice: Could not clear storage bucket '${bucketName}':`, err);
+    console.warn(`Notice: Could not clear storage bucket '${bucketName}':`, (err as Error).message);
   }
 }
 
@@ -69,7 +74,7 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
     // Check if the password is a pre-hashed BCrypt string or raw plain-text
     const isBcrypt = rawPassword.startsWith("$2a$") || rawPassword.startsWith("$2b$") || rawPassword.startsWith("$2y$");
 
-    const createUserPayload: any = {
+    const createUserPayload: Record<string, unknown> = {
       email: enrollee.email,
       email_confirm: true,
       user_metadata: {
@@ -96,13 +101,19 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
     let userId: string | undefined;
 
     // 2. Create user in Supabase Auth
-    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser(createUserPayload);
+    const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser(
+      createUserPayload as Parameters<typeof supabaseAdmin.auth.admin.createUser>[0]
+    );
 
     if (authError) {
       console.error("Auth creation failed:", authError);
 
       if (authError.message?.includes("already been registered") || authError.status === 422) {
-        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers();
+        // Fallback: Attempt to look up existing user
+        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({
+          page: 1,
+          perPage: 100,
+        });
         const existingUser = usersData?.users?.find((u) => u.email === enrollee.email);
 
         if (existingUser) {
@@ -143,9 +154,10 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
 
     revalidatePath("/dashboard/admin");
     return { success: true };
-  } catch (err: any) {
-    console.error("Approve enrollee unexpected error:", err);
-    return { success: false, error: err.message || "An unexpected error occurred." };
+  } catch (err) {
+    const error = err as Error;
+    console.error("Approve enrollee unexpected error:", error);
+    return { success: false, error: error.message || "An unexpected error occurred." };
   }
 }
 
@@ -175,8 +187,9 @@ export async function rejectEnrollee(requestId: string): Promise<{ success: bool
 
     revalidatePath("/dashboard/admin");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to reject enrollee." };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message || "Failed to reject enrollee." };
   }
 }
 
@@ -208,7 +221,8 @@ export async function deleteStudent(userId: string): Promise<{ success: boolean;
 
     revalidatePath("/dashboard/admin");
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message || "Failed to delete student." };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message || "Failed to delete student." };
   }
 }

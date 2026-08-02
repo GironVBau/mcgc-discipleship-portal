@@ -382,55 +382,62 @@ export default function AdminDashboard() {
   };
 
   const handleApproveStudent = async (requestId: string, studentName: string) => {
-  setActionError(null);
-  setActionSuccess(null);
+    setActionError(null);
+    setActionSuccess(null);
 
-  try {
-    // 1. Call the server action directly outside startTransition so errors are cleanly caught
-    const res = await approveEnrollee(requestId);
+    try {
+      // 1. Call server action outside startTransition to prevent React fiber crashes
+      const res = await approveEnrollee(requestId);
+      
+      if (!res || !res.success) {
+        setActionError(res?.error || "Failed to approve student.");
+        return;
+      }
 
-    if (!res?.success) {
-      setActionError(res?.error || "Failed to approve student. Check server logs.");
-      return;
+      // 2. Perform UI state transitions smoothly
+      startTransition(() => {
+        setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        setStudentCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
+        setActionSuccess(`Approved and activated account for ${studentName}!`);
+      });
+
+      // 3. Refresh active students list
+      const { data: updatedStudents } = await supabase
+        .from("profiles")
+        .select("id, full_name, username, email, role, created_at")
+        .eq("role", "student")
+        .order("created_at", { ascending: false });
+
+      if (updatedStudents) {
+        setActiveStudents(updatedStudents);
+      }
+    } catch (err: any) {
+      console.error("Client caught approval error:", err);
+      setActionError(err?.message || "An unexpected error occurred during activation.");
     }
+  };
 
-    // 2. Perform UI state updates safely
-    startTransition(() => {
-      setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
-      setStudentCount((prev) => (typeof prev === "number" ? prev + 1 : 1));
-      setActionSuccess(`Approved and activated account for ${studentName}!`);
-    });
-
-    // 3. Refresh active students list
-    const { data: updatedStudents } = await supabase
-      .from("profiles")
-      .select("id, full_name, username, email, role, created_at")
-      .eq("role", "student")
-      .order("created_at", { ascending: false });
-
-    if (updatedStudents) {
-      setActiveStudents(updatedStudents);
-    }
-  } catch (err: any) {
-    console.error("Approval error caught:", err);
-    setActionError(err?.message || "An unexpected error occurred during approval.");
-  }
-};
-
-  const handleRejectStudent = (requestId: string) => {
+  const handleRejectStudent = async (requestId: string) => {
     if (!confirm("Are you sure you want to reject and remove this application?")) return;
     setActionError(null);
     setActionSuccess(null);
 
-    startTransition(async () => {
-      try {
-        await rejectEnrollee(requestId);
+    try {
+      const res = await rejectEnrollee(requestId);
+      
+      if (!res || !res.success) {
+        setActionError(res?.error || "Failed to reject applicant.");
+        return;
+      }
+
+      startTransition(() => {
         setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
         setActionSuccess("Enrollment request rejected and removed.");
-      } catch (err: any) {
-        setActionError(err.message || "Failed to reject applicant.");
-      }
-    });
+      });
+    } catch (err: any) {
+      console.error("Client caught rejection error:", err);
+      setActionError(err?.message || "Failed to reject applicant.");
+    }
   };
 
   const handleToggleExamApproval = async (studentId: string, courseId: string, currentStatus: boolean) => {
