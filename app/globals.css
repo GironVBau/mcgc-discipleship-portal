@@ -26,7 +26,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom Apple Typography Utility Classes */
+/* --- ADD THIS HELPER CLASS --- */
+.exam-option {
+  color: var(--foreground);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
 .sf-display {
   font-family: var(--font-sf-display);
   letter-spacing: -0.022em;

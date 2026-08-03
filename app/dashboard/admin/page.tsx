@@ -386,7 +386,9 @@ export default function AdminDashboard() {
           .select("id, full_name, username, email, role, current_lesson, created_at")
           .eq("role", "student")
           .order("created_at", { ascending: false });
+console.log("Students data fetched:", studentsData);
 
+        setActiveStudents(studentsData || []);
         setActiveStudents(studentsData || []);
 
         // Load Calendar Events & Courses
@@ -410,41 +412,46 @@ export default function AdminDashboard() {
         }
 
         if (studentsData && coursesData) {
-          const statuses: StudentExamStatus[] = [];
+  // Debugging line to inspect raw data
+  const debugData = { progressData, lessonsData, studentsData };
+console.log("DEBUG PROGRESS:", debugData);
+(window as any).debugData = debugData; //
+  
+  const statuses: StudentExamStatus[] = [];
 
-          studentsData.forEach((st) => {
-            coursesData.forEach((crs) => {
-              const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
-              const totalLessons = courseLessons.length;
+  studentsData.forEach((st) => {
+    coursesData.forEach((crs) => {
+      const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
+      const totalLessons = courseLessons.length;
 
-              const lessonIds = new Set(courseLessons.map((l) => l.id));
-              const userCompletedCount = progressData?.filter(
-                (p) => p.user_id === st.id && lessonIds.has(p.lesson_id) && p.completed === true
-              ).length || 0;
+      const lessonIds = new Set(courseLessons.map((l) => l.id));
+      const userCompletedCount = progressData?.filter(
+        (p) => p.user_id === st.id && lessonIds.has(p.lesson_id) && p.completed === true
+      ).length || 0;
 
-              const approval = approvalsData?.find(
-                (a) => a.user_id === st.id && a.course_id === crs.id
-              );
+      const approval = approvalsData?.find(
+        (a) => a.user_id === st.id && a.course_id === crs.id
+      );
 
-              statuses.push({
-                studentId: st.id,
-                studentName: st.full_name || st.email,
-                username: st.username || "student",
-                courseId: crs.id,
-                courseTitle: crs.title,
-                completedLessons: userCompletedCount,
-                totalLessons: totalLessons,
-                isApproved: approval?.is_approved ?? false,
-              });
-            });
-          });
+      statuses.push({
+        studentId: st.id,
+        studentName: st.full_name || st.email,
+        username: st.username || "student",
+        courseId: crs.id,
+        courseTitle: crs.title,
+        completedLessons: userCompletedCount,
+        totalLessons: totalLessons,
+        isApproved: approval?.is_approved ?? false,
+      });
+    });
+  });
 
           setExamStudentStatuses(statuses);
         }
 
         // Fetch Exam Submissions
         const { data: submissions } = await supabase
-          .from("exam_submissions")
+          .from("student_exam_submissions")
           .select("id, user_id, course_id, score, passed, status, submitted_at, profiles(full_name)")
           .order("submitted_at", { ascending: false });
 

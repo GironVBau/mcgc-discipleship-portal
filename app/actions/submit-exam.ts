@@ -35,7 +35,7 @@ export async function submitFRAExam(
       };
     }
 
-    // 2. Security Check (Optional/Permissive Check)
+    // 2. Security Check
     const { data: approval, error: approvalError } = await supabase
       .from('exam_approvals')
       .select('is_approved')
@@ -43,8 +43,6 @@ export async function submitFRAExam(
       .eq('course_id', course.id)
       .maybeSingle();
 
-    // If your app requires explicit prior admin permission, keep this strict check.
-    // If students are allowed to take exams upon finishing lessons, we check if approval exists or proceed.
     if (approvalError) {
       console.warn('Exam approval query warning:', approvalError);
     }
@@ -93,11 +91,12 @@ export async function submitFRAExam(
     const essayText = studentAnswers['essay'] || studentAnswers['6'] || '';
 
     // 4. Record main exam submission
+    // CHANGED: Replaced 'course_slug' with 'course_id' to match your database schema
     const { data: examSub, error: subError } = await supabase
       .from('student_exam_submissions')
       .insert({
         user_id: user.id,
-        course_slug: courseSlug,
+        course_id: course.id,
         answers: studentAnswers,
         score: totalScore,
         percentage: percentage,
@@ -141,7 +140,6 @@ export async function submitFRAExam(
 
     // --- 6. AUTOMATIC LEVEL UNLOCK & APPROVAL UPDATE ---
     if (passed) {
-      // Upsert into exam_approvals to register permanent passed status
       await supabase
         .from('exam_approvals')
         .upsert(
@@ -154,7 +152,6 @@ export async function submitFRAExam(
           { onConflict: 'user_id,course_id' }
         );
 
-      // Invalidate Next.js Server Caches so Level 2 automatically renders unlocked!
       revalidatePath('/dashboard/student');
       revalidatePath('/dashboard/admin');
       revalidatePath('/courses');

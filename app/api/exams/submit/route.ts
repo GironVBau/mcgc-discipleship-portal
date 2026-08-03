@@ -29,7 +29,6 @@ export async function POST(request: Request) {
 
   // 2. Verify Role Authorization
   const role = user.user_metadata?.role;
-
   if (role !== "student") {
     return NextResponse.json(
       { error: "Forbidden: Only students can submit exams" },
@@ -42,18 +41,25 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { courseSlug = "foundational-discipleship", answers = {} } = body;
 
-    // 4. Fetch Answer Key for the Course
+    // LOOKUP: Get the course_id for the submission
+    const { data: course, error: courseErr } = await supabase
+      .from("courses")
+      .select("id")
+      .eq("slug", courseSlug)
+      .single();
+
+    if (courseErr || !course) {
+      return NextResponse.json({ error: "Course not found" }, { status: 404 });
+    }
+
+    // 4. Fetch Answer Key
     const { data: questions, error: qError } = await supabase
       .from("exam_questions")
       .select("question_number, correct_answer, points, part_number")
       .eq("course_slug", courseSlug);
 
     if (qError) {
-      console.error("Error fetching exam questions:", qError);
-      return NextResponse.json(
-        { error: "Failed to fetch exam questions for grading" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to fetch exam questions" }, { status: 500 });
     }
 
     let totalScore = 0;
@@ -61,11 +67,9 @@ export async function POST(request: Request) {
 
     if (questions) {
       questions.forEach((q) => {
-        // Objective questions (having correct_answer)
         if (q.correct_answer !== null) {
           const points = q.points ?? 1;
           totalPossiblePoints += points;
-
           const studentAns = answers[String(q.question_number)]?.trim().toLowerCase();
           const correctAns = q.correct_answer.trim().toLowerCase();
 
@@ -76,20 +80,16 @@ export async function POST(request: Request) {
       });
     }
 
-    const percentage =
-      totalPossiblePoints > 0
-        ? Math.round((totalScore / totalPossiblePoints) * 100)
-        : 0;
-
+    const percentage = totalPossiblePoints > 0 ? Math.round((totalScore / totalPossiblePoints) * 100) : 0;
     const passed = percentage >= 85;
     const essayText = answers["essay"] || answers["6"] || "";
 
-    // 5. Insert Exam Submission Record
+    // 5. Insert Exam Submission Record using course_id
     const { data: examSub, error: subError } = await supabase
       .from("student_exam_submissions")
       .insert({
         user_id: user.id,
-        course_slug: courseSlug,
+        course_id: course.id, // Correct column used here
         answers: answers,
         score: totalScore,
         percentage: percentage,
@@ -104,9 +104,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: subError.message }, { status: 500 });
     }
 
-    // 6. Queue Essay Submission for Instructor Review if Present
+    // 6. Queue Essay Submission
     if (essayText) {
-      const { error: essayError } = await supabase.from("user_essay_submissions").insert({
+      await supabase.from("user_essay_submissions").insert({
         student_id: user.id,
         user_id: user.id,
         question_title: "Practical Reflection / Essay",
@@ -115,10 +115,6 @@ export async function POST(request: Request) {
         status: "pending",
         submitted_at: new Date().toISOString(),
       });
-
-      if (essayError) {
-        console.error("Essay queue insertion error:", essayError);
-      }
     }
 
     return NextResponse.json({
