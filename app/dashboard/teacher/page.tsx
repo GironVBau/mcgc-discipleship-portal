@@ -259,7 +259,8 @@ export default function TeacherDashboard() {
     setActionSuccess(null);
 
     try {
-      const { error } = await supabase
+      // 1. Update the submission record
+      const { error: subError } = await supabase
         .from("student_exam_submissions")
         .update({
           status: modalStatus,
@@ -267,7 +268,33 @@ export default function TeacherDashboard() {
         })
         .eq("id", selectedSubmission.id);
 
-      if (error) throw error;
+      if (subError) throw subError;
+
+      // 2. If the exam is marked as passed, sync the Exam Approvals table
+      if (modalPassed) {
+        // First, get the course_id from the course slug
+        const { data: courseData } = await supabase
+          .from("courses")
+          .select("id")
+          .eq("slug", selectedSubmission.courseSlug)
+          .single();
+
+        if (courseData) {
+          const { error: approvalError } = await supabase
+            .from("exam_approvals")
+            .upsert(
+              {
+                user_id: selectedSubmission.userId,
+                course_id: courseData.id,
+                is_approved: true,
+                approved_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,course_id" }
+            );
+
+          if (approvalError) throw approvalError;
+        }
+      }
 
       // Update state locally
       setExamSubmissions((prev) =>

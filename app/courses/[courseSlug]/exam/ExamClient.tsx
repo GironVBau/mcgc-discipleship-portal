@@ -111,7 +111,6 @@ export default function ExamClient({
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans pb-20">
-      {/* Sticky Header */}
       <div className="sticky top-0 z-50 bg-[#1e2e68] text-white px-6 py-3 flex justify-between items-center shadow-md">
         <h1 className="font-bold text-sm">{courseTitle} Assessment</h1>
         <div className="bg-amber-400 text-slate-950 font-extrabold px-4 py-1 rounded-full text-sm">
@@ -120,13 +119,11 @@ export default function ExamClient({
       </div>
 
       <main className="max-w-4xl w-full mx-auto px-4 py-8 space-y-8">
-        {/* Header Card */}
         <div className="bg-white/5 p-6 rounded-3xl border border-white/10 shadow-sm space-y-2">
           <h2 className="text-xl font-black">Ministry of Christ&apos;s Great Commission Church Inc.</h2>
           <p className="text-xs opacity-60">Passing Score: 85% | Total Time: 90 Minutes</p>
         </div>
 
-        {/* Questions List */}
         {questions.map((q) => (
           <div key={q.id} className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
             <div className="flex justify-between items-start opacity-70 text-xs font-bold uppercase">
@@ -168,27 +165,40 @@ export default function ExamClient({
               </div>
             )}
 
-            {/* Part 2: Toggle Buttons */}
+            {/* Part 2: Modified True or False Section */}
             {q.part_number === 2 && (
-              <div className="flex flex-wrap gap-3 pt-2">
-                {(q.options && q.options.length > 0 ? q.options : ['A', 'B', 'C', 'D']).map((opt: any) => {
-                  const val = typeof opt === 'string' ? opt : opt.value;
-                  const isSelected = answers[String(q.question_number)] === val;
-                  return (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => handleInputChange(q.question_number, val)}
-                      className={`px-4 py-2 rounded-xl font-bold border transition-all text-sm ${
-                        isSelected
-                          ? 'bg-blue-600 border-blue-400 text-white'
-                          : 'bg-white/5 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      {val}
-                    </button>
-                  );
-                })}
+              <div className="space-y-4 pt-2">
+                <div className="flex flex-wrap gap-3">
+                  {(q.options && q.options.length > 0 ? q.options : ['TRUE', 'FALSE']).map((opt: any) => {
+                    const val = typeof opt === 'string' ? opt : opt.value;
+                    const isSelected = answers[String(q.question_number)] === val;
+                    return (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => handleInputChange(q.question_number, val)}
+                        className={`px-4 py-2 rounded-xl font-bold border transition-all text-sm ${
+                          isSelected
+                            ? 'bg-blue-600 border-blue-400 text-white'
+                            : 'bg-white/5 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        {val}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                {/* Conditional Correction Input for False answers */}
+                {answers[String(q.question_number)] === 'FALSE' && (
+                  <input
+                    type="text"
+                    placeholder="Correction: Write the word that makes this statement false..."
+                    className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    onChange={(e) => handleInputChange(`${q.question_number}_correction`, e.target.value)}
+                    value={answers[`${q.question_number}_correction`] || ''}
+                  />
+                )}
               </div>
             )}
 

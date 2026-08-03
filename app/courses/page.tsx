@@ -7,7 +7,7 @@ export default async function CoursesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Fetch all courses from DB
+  // Fetch all courses
   const { data: courses } = await supabase.from('courses').select('*');
 
   const foundationalCourse = courses?.find(
@@ -20,7 +20,6 @@ export default async function CoursesPage() {
     (c) => c.slug === 'ministry-readiness'
   );
 
-  // Track progress and approval states
   let passedLevel1 = false;
   let passedLevel2 = false;
   let completedSurvey = false;
@@ -28,16 +27,16 @@ export default async function CoursesPage() {
   let isLevel1Approved = false;
 
   if (user && foundationalCourse) {
-    // 1. Check Level 1 & Level 2 Exam Results
-    const { data: examResults } = await supabase
-      .from('user_exam_results')
+    // 1. Fetch Exam Submissions
+    const { data: examSubmissions } = await supabase
+      .from('student_exam_submissions')
       .select('course_id, passed')
       .eq('user_id', user.id);
 
-    passedLevel1 = !!examResults?.some(
-      (r) => r.course_id === foundationalCourse?.id && r.passed
+    passedLevel1 = !!examSubmissions?.some(
+      (r) => r.course_id === foundationalCourse.id && r.passed
     );
-    passedLevel2 = !!examResults?.some(
+    passedLevel2 = !!examSubmissions?.some(
       (r) => r.course_id === fundamentalCourse?.id && r.passed
     );
 
@@ -56,18 +55,19 @@ export default async function CoursesPage() {
       .select('id')
       .eq('course_id', foundationalCourse.id);
 
+    let completedProgress: any[] = [];
     if (level1Lessons && level1Lessons.length > 0) {
       const lessonIds = level1Lessons.map((l) => l.id);
 
-      const { data: completedProgress } = await supabase
+      const { data: progress } = await supabase
         .from('user_lesson_progress')
         .select('lesson_id')
         .eq('user_id', user.id)
         .eq('completed', true)
         .in('lesson_id', lessonIds);
 
-      allLevel1LessonsCompleted =
-        (completedProgress?.length ?? 0) === level1Lessons.length;
+      completedProgress = progress || [];
+      allLevel1LessonsCompleted = completedProgress.length === level1Lessons.length;
     }
 
     // 4. Check Teacher/Admin Exam Approval Status
@@ -89,13 +89,10 @@ export default async function CoursesPage() {
 
   return (
     <div className="min-h-screen bg-[#02050e] text-slate-100 sf-text antialiased relative overflow-hidden py-16 px-4 sm:px-6">
-      {/* Background Atmosphere Lights */}
       <div className="absolute top-12 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute top-1/2 right-10 w-[400px] h-[400px] bg-amber-500/5 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="max-w-4xl w-full mx-auto space-y-12 relative z-10">
-        
-        {/* Header Section */}
         <header className="text-center space-y-3 max-w-2xl mx-auto">
           <span className="inline-block sf-text text-[11px] font-semibold uppercase tracking-widest text-amber-400 bg-amber-400/10 px-3.5 py-1 rounded-full border border-amber-400/20">
             MCGC Discipleship Pathway
@@ -108,20 +105,15 @@ export default async function CoursesPage() {
           </p>
         </header>
 
-        {/* Roadmap Cards Container */}
         <div className="relative space-y-6">
-
           {/* LEVEL 1 CARD */}
           <div className="bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl transition-all duration-200">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-              
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="sf-text text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-400/10 px-2.5 py-0.5 rounded-md border border-amber-400/20">
                     Level 1
                   </span>
-
-                  {/* Status Badges */}
                   {passedLevel1 ? (
                     <span className="sf-text text-[11px] text-emerald-400 font-semibold flex items-center gap-1 bg-emerald-950/50 px-2.5 py-0.5 rounded-md border border-emerald-800/40">
                       ✓ Exam Passed
@@ -144,13 +136,8 @@ export default async function CoursesPage() {
                 <h2 className="sf-display text-xl font-bold text-white tracking-tight">
                   {foundationalCourse?.title || 'Foundational Discipleship'}
                 </h2>
-                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
-                  {foundationalCourse?.description ||
-                    'A foundational study for new believers covering the essential starting points of the Christian walk.'}
-                </p>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
                 <Link
                   href="/courses/foundational-discipleship"
@@ -173,19 +160,12 @@ export default async function CoursesPage() {
                   >
                     Take Exam →
                   </Link>
-                ) : allLevel1LessonsCompleted && !isLevel1Approved ? (
-                  <button
-                    disabled
-                    className="sf-text bg-amber-950/40 text-amber-400/80 font-medium text-xs px-5 py-3 rounded-xl cursor-not-allowed border border-amber-800/30"
-                  >
-                    Pending Approval ⏳
-                  </button>
                 ) : (
                   <button
                     disabled
                     className="sf-text bg-slate-900/80 text-slate-600 font-medium text-xs px-5 py-3 rounded-xl cursor-not-allowed border border-slate-800"
                   >
-                    Exam Locked 🔒
+                    {allLevel1LessonsCompleted ? 'Pending Approval ⏳' : 'Exam Locked 🔒'}
                   </button>
                 )}
               </div>
@@ -201,7 +181,6 @@ export default async function CoursesPage() {
             }`}
           >
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-              
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span
@@ -213,23 +192,16 @@ export default async function CoursesPage() {
                   >
                     Level 2
                   </span>
-
                   {!isLevel2Unlocked && (
                     <span className="sf-text text-[11px] text-amber-400/80 font-medium">
                       🔒 Pass Level 1 Exam to unlock
                     </span>
                   )}
                 </div>
-
                 <h2 className="sf-display text-xl font-bold text-white tracking-tight">
                   {fundamentalCourse?.title || 'Fundamental Discipleship'}
                 </h2>
-                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
-                  {fundamentalCourse?.description ||
-                    'A systematic study of core Christian doctrine grounded in Scripture.'}
-                </p>
               </div>
-
               {isLevel2Unlocked ? (
                 <Link
                   href="/courses/fundamental-discipleship"
@@ -257,7 +229,6 @@ export default async function CoursesPage() {
             }`}
           >
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-              
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span
@@ -269,22 +240,16 @@ export default async function CoursesPage() {
                   >
                     Bridge Assessment
                   </span>
-
                   {!isSurveyUnlocked && (
                     <span className="sf-text text-[11px] text-amber-400/80 font-medium">
                       🔒 Complete Levels 1 &amp; 2 first
                     </span>
                   )}
                 </div>
-
                 <h2 className="sf-display text-xl font-bold text-white tracking-tight">
                   Spiritual Gifts Survey
                 </h2>
-                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
-                  Discover your primary ministry gifts and strengths. Required before unlocking Level 3: Ministry Readiness.
-                </p>
               </div>
-
               {isSurveyUnlocked ? (
                 <Link
                   href="/spiritual-gifts-survey"
@@ -312,7 +277,6 @@ export default async function CoursesPage() {
             }`}
           >
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-              
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <span
@@ -324,23 +288,16 @@ export default async function CoursesPage() {
                   >
                     Level 3
                   </span>
-
                   {!isLevel3Unlocked && (
                     <span className="sf-text text-[11px] text-amber-400/80 font-medium">
                       🔒 Complete Spiritual Gifts Survey to unlock
                     </span>
                   )}
                 </div>
-
                 <h2 className="sf-display text-xl font-bold text-white tracking-tight">
                   {ministryReadinessCourse?.title || 'Ministry Readiness Track'}
                 </h2>
-                <p className="sf-text text-xs text-slate-400 leading-relaxed max-w-lg">
-                  {ministryReadinessCourse?.description ||
-                    'Discover spiritual gifts, understand biblical ministry, and find your place of service in the church.'}
-                </p>
               </div>
-
               {isLevel3Unlocked ? (
                 <Link
                   href="/courses/ministry-readiness"
@@ -358,7 +315,6 @@ export default async function CoursesPage() {
               )}
             </div>
           </div>
-
         </div>
       </div>
     </div>
