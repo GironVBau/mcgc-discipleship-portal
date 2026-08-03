@@ -48,6 +48,7 @@ interface ExamSubmission {
   studentName: string;
   username: string;
   courseId: string;
+  courseSlug: string;
   score: number;
   percentage: number;
   passed: boolean;
@@ -69,12 +70,10 @@ export default function TeacherDashboard() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // Live Clock & Calendar
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // --- NEW: Grading Modal State ---
   const [selectedSubmission, setSelectedSubmission] = useState<ExamSubmission | null>(null);
   const [modalStatus, setModalStatus] = useState<string>("graded");
   const [modalPassed, setModalPassed] = useState<boolean>(true);
@@ -96,7 +95,6 @@ export default function TeacherDashboard() {
           return;
         }
 
-        // 1. Fetch user profile
         const { data: profile } = await supabase
           .from("profiles")
           .select("full_name, username, role")
@@ -109,7 +107,6 @@ export default function TeacherDashboard() {
           role: profile?.role || user.user_metadata?.role || "teacher",
         });
 
-        // 2. Count total students
         const { count: students } = await supabase
           .from("profiles")
           .select("id", { count: "exact", head: true })
@@ -117,18 +114,16 @@ export default function TeacherDashboard() {
 
         setStudentCount(students ?? 0);
 
-        // 3. Fetch students, courses, lessons, and exam approvals
         const { data: studentsData } = await supabase
           .from("profiles")
           .select("id, full_name, username, email")
           .eq("role", "student");
 
-        const { data: coursesData } = await supabase.from("courses").select("id, title");
+        const { data: coursesData } = await supabase.from("courses").select("id, title, slug");
         const { data: lessonsData } = await supabase.from("lessons").select("id, course_id");
         const { data: progressData } = await supabase.from("user_lesson_progress").select("user_id, lesson_id").eq("completed", true);
         const { data: approvalsData } = await supabase.from("exam_approvals").select("user_id, course_id, is_approved");
 
-        // 4. Fetch Exam Submissions
         const { data: submissionsData } = await supabase
           .from("student_exam_submissions")
           .select("id, user_id, course_id, score, percentage, passed, status, submitted_at")
@@ -169,16 +164,18 @@ export default function TeacherDashboard() {
           setExamStudentStatuses(statuses);
         }
 
-        // Map and set Exam Submissions
         if (submissionsData && studentsData) {
           const formattedSubmissions: ExamSubmission[] = submissionsData.map((sub) => {
             const student = studentsData.find((s) => s.id === sub.user_id);
+            const courseSlug = coursesData?.find(c => c.id === sub.course_id)?.slug || sub.course_id;
+            
             return {
               id: sub.id,
               userId: sub.user_id,
               studentName: student?.full_name || student?.email || "Unknown Student",
               username: student?.username || "student",
-              courseSlug: sub.course_id,
+              courseSlug: courseSlug,
+              courseId: sub.course_id,
               score: sub.score || 0,
               percentage: sub.percentage || 0,
               passed: sub.passed || false,
@@ -242,7 +239,6 @@ export default function TeacherDashboard() {
       setActionError(err.message || "Failed to update exam approval status.");
     }
   };
-
   // --- NEW: Open Modal Function ---
   const openGradingModal = (sub: ExamSubmission) => {
     setSelectedSubmission(sub);
