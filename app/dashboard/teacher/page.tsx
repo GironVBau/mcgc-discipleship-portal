@@ -47,7 +47,7 @@ interface ExamSubmission {
   userId: string;
   studentName: string;
   username: string;
-  courseSlug: string;
+  courseId: string;
   score: number;
   percentage: number;
   passed: boolean;
@@ -131,7 +131,7 @@ export default function TeacherDashboard() {
         // 4. Fetch Exam Submissions
         const { data: submissionsData } = await supabase
           .from("student_exam_submissions")
-          .select("id, user_id, course_slug, score, percentage, passed, status, submitted_at")
+          .select("id, user_id, course_id, score, percentage, passed, status, submitted_at")
           .order("submitted_at", { ascending: false });
 
         if (studentsData && coursesData) {
