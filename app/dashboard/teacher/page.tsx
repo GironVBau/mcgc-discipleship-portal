@@ -178,7 +178,7 @@ export default function TeacherDashboard() {
               userId: sub.user_id,
               studentName: student?.full_name || student?.email || "Unknown Student",
               username: student?.username || "student",
-              courseSlug: sub.course_slug,
+              courseSlug: sub.course_id,
               score: sub.score || 0,
               percentage: sub.percentage || 0,
               passed: sub.passed || false,
