@@ -114,7 +114,7 @@ export default function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
               className="w-full bg-amber-400 text-slate-950 font-bold py-3 text-center rounded-xl text-sm flex items-center justify-center space-x-2"
             >
-              <span>Enroll Now</span>
+              <span>Create Account</span>
               <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
