@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { approveEnrollee, rejectEnrollee } from "./actions";
+import { approveEnrollee, rejectEnrollee, deleteAnnouncement } from "./actions";
 import { 
   Users, 
   GraduationCap, 
@@ -665,19 +665,21 @@ export default function AdminDashboard() {
     }
   };
 
-  // Handle Delete Announcement
+  // Handle Delete Announcement using Server Action
   const handleDeleteAnnouncement = async (id: string) => {
     if (!confirm("Are you sure you want to delete this announcement?")) return;
+    setActionError(null);
+    setActionSuccess(null);
 
-    const { error } = await supabase
-      .from("announcements")
-      .delete()
-      .eq("id", id);
+    const res = await deleteAnnouncement(id);
 
-    if (!error) {
-      setActionSuccess("Announcement deleted.");
-      await fetchAnnouncements();
+    if (!res || !res.success) {
+      setActionError(res?.error || "Failed to delete announcement.");
+      return;
     }
+
+    setActionSuccess("Announcement deleted.");
+    await fetchAnnouncements();
   };
 
   // Handle Creating New Calendar Event in Supabase

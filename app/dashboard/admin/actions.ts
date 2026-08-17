@@ -215,3 +215,26 @@ export async function deleteStudent(userId: string): Promise<{ success: boolean;
     return { success: false, error: error.message || "Failed to delete student." };
   }
 }
+
+/**
+ * DELETE ANNOUNCEMENT
+ * Deletes an announcement record from the announcements table using admin privileges.
+ */
+export async function deleteAnnouncement(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabaseAdmin
+      .from("announcements")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    revalidatePath("/dashboard/admin");
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message || "Failed to delete announcement." };
+  }
+}
