@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer"; // 1. Import your Footer component
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +15,30 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MCGC Discipleship Portal",
+  title: {
+    default: "MCGC Discipleship System",
+    template: "%s | MCGC Discipleship System",
+  },
   description:
-    "Ministry of Christ's Great Commission Church Inc. Discipleship Portal for Standard On-boarding Process (S.O.P)",
+    "An original discipleship framework developed for MCGC, providing a structured and intentional progression of biblical instruction for every member.",
+  applicationName: "MCGC Discipleship System",
+  keywords: [
+    "MCGC",
+    "MCGC Discipleship System",
+    "discipleship",
+    "Christian discipleship",
+    "biblical education",
+    "Standard On-boarding Process",
+    "SOP",
+    "Ministry of Christ's Great Commission Church",
+  ],
+  authors: [
+    {
+      name: "Ministry of Christ's Great Commission Church Inc.",
+    },
+  ],
+  creator: "Ministry of Christ's Great Commission Church Inc.",
+  publisher: "Ministry of Christ's Great Commission Church Inc.",
 };
 
 export default function RootLayout({
@@ -31,13 +52,15 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-amber-400 selection:text-slate-950">
-        {/* Sticky Dynamic Glassmorphic Navbar */}
+        {/* Global Navigation */}
         <Navbar />
 
         {/* Page Content */}
-        <main className="flex-1 flex flex-col">{children}</main>
+        <main className="flex-1 flex flex-col">
+          {children}
+        </main>
 
-        {/* 2. Global Footer */}
+        {/* Global Footer */}
         <Footer />
       </body>
     </html>
