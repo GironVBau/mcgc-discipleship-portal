@@ -12,7 +12,6 @@ if (!supabaseUrl || !serviceRoleKey) {
   );
 }
 
-// Admin client initialized with secret service role key
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     autoRefreshToken: false,
@@ -20,9 +19,6 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   },
 });
 
-/**
- * Helper function to safely delete files owned by a user from a storage bucket.
- */
 async function deleteUserStorageFiles(bucketName: string, folderPath: string) {
   try {
     const { data: files, error } = await supabaseAdmin.storage
@@ -43,13 +39,8 @@ async function deleteUserStorageFiles(bucketName: string, folderPath: string) {
   }
 }
 
-/**
- * APPROVE ENROLLEE
- * Creates real user in Supabase Auth & profiles table, then deletes from pending queue.
- */
 export async function approveEnrollee(requestId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Fetch pending applicant details
     const { data: enrollee, error: fetchError } = await supabaseAdmin
       .from("pending_enrollees")
       .select("*")
@@ -60,10 +51,7 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
       return { success: false, error: "Pending application not found." };
     }
 
-    // Safely resolve raw password string
     let rawPassword = String(enrollee.password || enrollee.password_hash || "").trim();
-    
-    // Ensure the password meets Supabase Auth's 6-character minimum
     if (!rawPassword || rawPassword.length < 6) {
       rawPassword = rawPassword ? rawPassword.padEnd(6, "0") : "Student2026!";
     }
@@ -74,7 +62,6 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
     const username = String(enrollee.username || enrollee.email.split("@")[0]).trim();
     const phoneNumber = String(enrollee.phone_number || enrollee.phone || "").trim();
 
-    // Clean user metadata (no undefined/null values)
     const userMetadata = {
       first_name: firstName,
       surname: surname,
@@ -86,7 +73,6 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
 
     let userId: string | undefined;
 
-    // 2. Create user in Supabase Auth
     const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email: enrollee.email,
       password: rawPassword,
@@ -95,16 +81,9 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
     });
 
     if (authError) {
-      console.error("Auth creation failed:", authError);
-
       if (authError.message?.includes("already been registered") || authError.status === 422) {
-        // Fallback: Lookup existing user if already present in Auth system
-        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({
-          page: 1,
-          perPage: 100,
-        });
+        const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 100 });
         const existingUser = usersData?.users?.find((u) => u.email === enrollee.email);
-
         if (existingUser) {
           userId = existingUser.id;
         } else {
@@ -121,7 +100,6 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
       return { success: false, error: "Failed to determine user ID." };
     }
 
-    // 3. Upsert into public.profiles table
     const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
       id: userId,
       first_name: firstName,
@@ -138,43 +116,34 @@ export async function approveEnrollee(requestId: string): Promise<{ success: boo
       return { success: false, error: `Profile Creation Error: ${profileError.message}` };
     }
 
-    // 4. Remove record from pending queue
     await supabaseAdmin.from("pending_enrollees").delete().eq("id", requestId);
 
     revalidatePath("/dashboard/admin");
+    revalidatePath("/");
     return { success: true };
   } catch (err) {
     const error = err as Error;
-    console.error("Approve enrollee unexpected error:", error);
     return { success: false, error: error.message || "An unexpected error occurred." };
   }
 }
 
-/**
- * REJECT ENROLLEE
- * Deletes application from pending_enrollees queue and purges associated uploaded files.
- */
 export async function rejectEnrollee(requestId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Fetch applicant details to check for attached files
     const { data: enrollee } = await supabaseAdmin
       .from("pending_enrollees")
       .select("file_path")
       .eq("id", requestId)
       .maybeSingle();
 
-    // 2. Delete uploaded document from storage if exists
     if (enrollee?.file_path) {
-      await supabaseAdmin.storage
-        .from("student-documents")
-        .remove([enrollee.file_path]);
+      await supabaseAdmin.storage.from("student-documents").remove([enrollee.file_path]);
     }
 
-    // 3. Delete application from database
     const { error } = await supabaseAdmin.from("pending_enrollees").delete().eq("id", requestId);
     if (error) return { success: false, error: error.message };
 
     revalidatePath("/dashboard/admin");
+    revalidatePath("/");
     return { success: true };
   } catch (err) {
     const error = err as Error;
@@ -182,33 +151,22 @@ export async function rejectEnrollee(requestId: string): Promise<{ success: bool
   }
 }
 
-/**
- * DELETE ACTIVE STUDENT
- * Purges user from Auth (which CASCADE deletes profiles row), 
- * and cleans up their uploaded files in storage.
- */
 export async function deleteStudent(userId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    // 1. Clean up student storage buckets
     await deleteUserStorageFiles("student-documents", userId);
     await deleteUserStorageFiles("avatars", userId);
 
-    // 2. Purge user from Supabase Auth
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
 
     if (authError) {
-      // Fallback: manually delete from profiles table
-      const { error: profileError } = await supabaseAdmin
-        .from("profiles")
-        .delete()
-        .eq("id", userId);
-
+      const { error: profileError } = await supabaseAdmin.from("profiles").delete().eq("id", userId);
       if (profileError) {
         return { success: false, error: `Deletion Error: ${profileError.message}` };
       }
     }
 
     revalidatePath("/dashboard/admin");
+    revalidatePath("/");
     return { success: true };
   } catch (err) {
     const error = err as Error;
@@ -216,10 +174,6 @@ export async function deleteStudent(userId: string): Promise<{ success: boolean;
   }
 }
 
-/**
- * DELETE ANNOUNCEMENT
- * Deletes an announcement record from the announcements table using admin privileges.
- */
 export async function deleteAnnouncement(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabaseAdmin
@@ -232,6 +186,7 @@ export async function deleteAnnouncement(id: string): Promise<{ success: boolean
     }
 
     revalidatePath("/dashboard/admin");
+    revalidatePath("/");
     return { success: true };
   } catch (err) {
     const error = err as Error;

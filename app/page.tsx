@@ -124,11 +124,14 @@ export default function Home() {
   useEffect(() => {
     async function fetchAnnouncements() {
       try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
         const { data, error } = await supabase
           .from("announcements")
           .select("*")
           .eq("is_active", true)
-          .gte("event_date", new Date().toISOString())
+          .gte("event_date", todayStart.toISOString())
           .order("event_date", { ascending: true })
           .limit(3);
 
