@@ -27,7 +27,9 @@ import {
   FileCheck,
   FileText,
   KeyRound,
-  LayoutDashboard
+  LayoutDashboard,
+  Trash2,
+  Megaphone
 } from "lucide-react";
 
 // --- INTERFACES ---
@@ -85,6 +87,15 @@ interface CalendarEvent {
   title: string;
   event_date: string;
   category: string;
+  created_at?: string;
+}
+
+interface AnnouncementItem {
+  id: string;
+  title: string;
+  description: string;
+  event_date: string;
+  is_active: boolean;
   created_at?: string;
 }
 
@@ -227,6 +238,13 @@ export default function AdminDashboard() {
   const [examStudentStatuses, setExamStudentStatuses] = useState<StudentExamStatus[]>([]);
   const [examSubmissions, setExamSubmissions] = useState<ExamSubmission[]>([]);
 
+  // Announcements State
+  const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
+  const [announcementTitle, setAnnouncementTitle] = useState("");
+  const [announcementDesc, setAnnouncementDesc] = useState("");
+  const [announcementDate, setAnnouncementDate] = useState("");
+  const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -278,6 +296,18 @@ export default function AdminDashboard() {
     }
   };
 
+  // Fetch Announcements
+  const fetchAnnouncements = async () => {
+    const { data, error } = await supabase
+      .from("announcements")
+      .select("*")
+      .order("event_date", { ascending: true });
+
+    if (!error && data) {
+      setAnnouncements(data);
+    }
+  };
+
   // Fetch Real Courses safely without requiring an 'instructor' column
   const fetchCourses = async () => {
     const { data: coursesData, error } = await supabase
@@ -285,7 +315,7 @@ export default function AdminDashboard() {
       .select("id, title");
 
     if (error || !coursesData) {
-      console.error("Error loading courses:", error?.message, error?.details, error?.hint);
+      console.error("Error loading courses:", error?.message);
       return;
     }
 
@@ -293,7 +323,6 @@ export default function AdminDashboard() {
       coursesData.map(async (c: any) => {
         let studentCount = 0;
 
-        // Strategy 1: Try fetching from course_enrollments table
         const { count, error: enrollError } = await supabase
           .from("course_enrollments")
           .select("id", { count: "exact", head: true })
@@ -302,7 +331,6 @@ export default function AdminDashboard() {
         if (!enrollError && count !== null) {
           studentCount = count;
         } else {
-          // Strategy 2: Fallback to calculating active progress via lessons & user_lesson_progress
           const { data: lessons } = await supabase
             .from("lessons")
             .select("id")
@@ -386,13 +414,11 @@ export default function AdminDashboard() {
           .select("id, full_name, username, email, role, current_lesson, created_at")
           .eq("role", "student")
           .order("created_at", { ascending: false });
-console.log("Students data fetched:", studentsData);
 
         setActiveStudents(studentsData || []);
-        setActiveStudents(studentsData || []);
 
-        // Load Calendar Events & Courses
-        await Promise.all([fetchCalendarEvents(), fetchCourses()]);
+        // Load Calendar Events, Courses, & Announcements
+        await Promise.all([fetchCalendarEvents(), fetchCourses(), fetchAnnouncements()]);
 
         // --- LOAD EXAM APPROVALS DATA ---
         const [
@@ -412,39 +438,34 @@ console.log("Students data fetched:", studentsData);
         }
 
         if (studentsData && coursesData) {
-  // Debugging line to inspect raw data
-  const debugData = { progressData, lessonsData, studentsData };
-console.log("DEBUG PROGRESS:", debugData);
-(window as any).debugData = debugData; //
-  
-  const statuses: StudentExamStatus[] = [];
+          const statuses: StudentExamStatus[] = [];
 
-  studentsData.forEach((st) => {
-    coursesData.forEach((crs) => {
-      const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
-      const totalLessons = courseLessons.length;
+          studentsData.forEach((st) => {
+            coursesData.forEach((crs) => {
+              const courseLessons = lessonsData?.filter((l) => l.course_id === crs.id) || [];
+              const totalLessons = courseLessons.length;
 
-      const lessonIds = new Set(courseLessons.map((l) => l.id));
-      const userCompletedCount = progressData?.filter(
-        (p) => p.user_id === st.id && lessonIds.has(p.lesson_id) && p.completed === true
-      ).length || 0;
+              const lessonIds = new Set(courseLessons.map((l) => l.id));
+              const userCompletedCount = progressData?.filter(
+                (p) => p.user_id === st.id && lessonIds.has(p.lesson_id) && p.completed === true
+              ).length || 0;
 
-      const approval = approvalsData?.find(
-        (a) => a.user_id === st.id && a.course_id === crs.id
-      );
+              const approval = approvalsData?.find(
+                (a) => a.user_id === st.id && a.course_id === crs.id
+              );
 
-      statuses.push({
-        studentId: st.id,
-        studentName: st.full_name || st.email,
-        username: st.username || "student",
-        courseId: crs.id,
-        courseTitle: crs.title,
-        completedLessons: userCompletedCount,
-        totalLessons: totalLessons,
-        isApproved: approval?.is_approved ?? false,
-      });
-    });
-  });
+              statuses.push({
+                studentId: st.id,
+                studentName: st.full_name || st.email,
+                username: st.username || "student",
+                courseId: crs.id,
+                courseTitle: crs.title,
+                completedLessons: userCompletedCount,
+                totalLessons: totalLessons,
+                isApproved: approval?.is_approved ?? false,
+              });
+            });
+          });
 
           setExamStudentStatuses(statuses);
         }
@@ -584,10 +605,9 @@ console.log("DEBUG PROGRESS:", debugData);
     if (!newCourseTitle) return;
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("courses")
-        .insert([{ title: newCourseTitle }])
-        .select();
+        .insert([{ title: newCourseTitle }]);
 
       if (error) throw error;
 
@@ -600,6 +620,66 @@ console.log("DEBUG PROGRESS:", debugData);
     }
   };
 
+  // Handle Creating New Announcement
+  const handleCreateAnnouncement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!announcementTitle || !announcementDate) return;
+
+    setIsSubmittingAnnouncement(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const { error } = await supabase.from("announcements").insert([
+        {
+          title: announcementTitle,
+          description: announcementDesc,
+          event_date: new Date(announcementDate).toISOString(),
+          is_active: true,
+        },
+      ]);
+
+      if (error) throw error;
+
+      setActionSuccess("Announcement published successfully!");
+      setAnnouncementTitle("");
+      setAnnouncementDesc("");
+      setAnnouncementDate("");
+      await fetchAnnouncements();
+    } catch (err: any) {
+      setActionError(err.message || "Failed to publish announcement.");
+    } finally {
+      setIsSubmittingAnnouncement(false);
+    }
+  };
+
+  // Handle Toggle Active Announcement
+  const handleToggleAnnouncementActive = async (id: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from("announcements")
+      .update({ is_active: !currentStatus })
+      .eq("id", id);
+
+    if (!error) {
+      await fetchAnnouncements();
+    }
+  };
+
+  // Handle Delete Announcement
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this announcement?")) return;
+
+    const { error } = await supabase
+      .from("announcements")
+      .delete()
+      .eq("id", id);
+
+    if (!error) {
+      setActionSuccess("Announcement deleted.");
+      await fetchAnnouncements();
+    }
+  };
+
   // Handle Creating New Calendar Event in Supabase
   const handleCreateCalendarEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -609,7 +689,7 @@ console.log("DEBUG PROGRESS:", debugData);
     setActionError(null);
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("calendar_events")
         .insert([
           {
@@ -617,8 +697,7 @@ console.log("DEBUG PROGRESS:", debugData);
             event_date: newEventDate,
             category: newEventCategory,
           },
-        ])
-        .select();
+        ]);
 
       if (error) throw error;
 
@@ -685,7 +764,6 @@ console.log("DEBUG PROGRESS:", debugData);
         </div>
 
         <div className="flex items-center space-x-3 self-start md:self-auto">
-          {/* Switch to Teacher Dashboard Button */}
           <button
             onClick={() => router.push("/dashboard/teacher")}
             className="inline-flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 text-xs font-semibold rounded-xl transition-all"
@@ -769,6 +847,152 @@ console.log("DEBUG PROGRESS:", debugData);
           </div>
         </div>
 
+        {/* --- ANNOUNCEMENTS MANAGEMENT SECTION --- */}
+        <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <Megaphone className="w-5 h-5 text-amber-400" />
+              <span>Homepage Announcements & Events Management</span>
+            </h2>
+            <span className="text-xs font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-3 py-1 rounded-full">
+              {announcements.length} Total
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            {/* Create Announcement Form */}
+            <div className="lg:col-span-5 bg-slate-950/80 border border-slate-800 p-6 rounded-2xl space-y-4 h-fit">
+              <h3 className="text-sm font-bold text-white flex items-center space-x-2">
+                <Plus className="w-4 h-4 text-amber-400" />
+                <span>Publish New Announcement</span>
+              </h3>
+
+              <form onSubmit={handleCreateAnnouncement} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Event Title</label>
+                  <input
+                    type="text"
+                    value={announcementTitle}
+                    onChange={(e) => setAnnouncementTitle(e.target.value)}
+                    placeholder="e.g., Sunday Fellowship & Worship"
+                    required
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={announcementDate}
+                    onChange={(e) => setAnnouncementDate(e.target.value)}
+                    required
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Description</label>
+                  <textarea
+                    value={announcementDesc}
+                    onChange={(e) => setAnnouncementDesc(e.target.value)}
+                    placeholder="Provide details about the gathering or schedule..."
+                    rows={4}
+                    required
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingAnnouncement}
+                  className="w-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold py-3 rounded-xl text-xs uppercase tracking-wider transition-all shadow-md disabled:opacity-50"
+                >
+                  {isSubmittingAnnouncement ? "Publishing..." : "Publish Announcement"}
+                </button>
+              </form>
+            </div>
+
+            {/* Existing Announcements List */}
+            <div className="lg:col-span-7 space-y-4">
+              <h3 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Active & Past Announcements</h3>
+
+              <div className="space-y-3 max-h-[480px] overflow-y-auto pr-2">
+                {announcements.map((item) => {
+                  const eventDateObj = new Date(item.event_date);
+                  const formattedDate = eventDateObj.toLocaleDateString("en-US", {
+                    timeZone: "Asia/Manila",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  });
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-slate-950/80 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-400/20 px-2.5 py-0.5 rounded">
+                              <CalendarIcon className="w-3 h-3" />
+                              {formattedDate}
+                            </span>
+                            <span
+                              className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                item.is_active
+                                  ? "bg-emerald-950 text-emerald-400 border border-emerald-500/30"
+                                  : "bg-slate-800 text-slate-400 border border-slate-700"
+                              }`}
+                            >
+                              {item.is_active ? "Active" : "Hidden"}
+                            </span>
+                          </div>
+                          <h4 className="text-base font-bold text-white">
+                            {item.title}
+                          </h4>
+                          <p className="text-xs text-slate-300/80 line-clamp-2">
+                            {item.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-800 text-xs">
+                        <button
+                          onClick={() => handleToggleAnnouncementActive(item.id, item.is_active)}
+                          className={`font-semibold hover:underline ${
+                            item.is_active ? "text-amber-400" : "text-slate-400"
+                          }`}
+                        >
+                          {item.is_active ? "Hide from Homepage" : "Show on Homepage"}
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteAnnouncement(item.id)}
+                          className="text-rose-400 hover:text-rose-300 inline-flex items-center gap-1 transition-colors font-medium"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {announcements.length === 0 && (
+                  <div className="bg-slate-950/40 border border-slate-800/60 p-8 rounded-2xl text-center text-slate-400 text-xs">
+                    No announcements created yet. Use the form on the left to publish your first church event.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Active Students List */}
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4">
           <div className="flex items-center justify-between">
@@ -796,7 +1020,6 @@ console.log("DEBUG PROGRESS:", debugData);
                     </div>
                     <p className="text-xs text-slate-400">{student.email}</p>
 
-                    {/* Current Lesson Indicator */}
                     <div className="flex items-center space-x-2 pt-1">
                       <span className="text-[11px] text-slate-400">Current Progress:</span>
                       <span className="text-[11px] font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-md">

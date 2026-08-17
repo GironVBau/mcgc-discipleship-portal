@@ -9,7 +9,16 @@ import {
   GraduationCap,
   ShieldCheck,
   ArrowUpRight,
+  Calendar,
+  Clock,
 } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
+
+// Initialize Supabase Client for the browser
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // Real-Time Philippine Standard Time (PST) Clock Component (Single Line)
 function PhilippineClock() {
@@ -71,6 +80,33 @@ function PhilippineClock() {
 }
 
 export default function Home() {
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+
+  useEffect(() => {
+    async function fetchAnnouncements() {
+      try {
+        const { data, error } = await supabase
+          .from("announcements")
+          .select("*")
+          .eq("is_active", true)
+          .gte("event_date", new Date().toISOString())
+          .order("event_date", { ascending: true })
+          .limit(3);
+
+        if (!error && data) {
+          setAnnouncements(data);
+        }
+      } catch (err) {
+        console.error("Error fetching announcements:", err);
+      } finally {
+        setLoadingAnnouncements(false);
+      }
+    }
+
+    fetchAnnouncements();
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#02050e] text-slate-100 flex flex-col relative overflow-x-hidden selection:bg-amber-300 selection:text-slate-950">
       
@@ -167,7 +203,7 @@ export default function Home() {
       <div className="absolute top-[500px] right-0 w-[400px] h-[400px] bg-amber-500/5 rounded-full blur-[160px] pointer-events-none" />
 
       {/* Main Hero Section */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 sm:px-10 pt-16 sm:pt-28 pb-20 sm:pb-32 grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-12 items-center relative z-10">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-6 sm:px-10 pt-16 sm:pt-28 pb-16 grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-12 items-center relative z-10">
         
         {/* Left Column */}
         <div className="lg:col-span-7 space-y-7 text-center lg:text-left">
@@ -249,6 +285,91 @@ export default function Home() {
         </div>
 
       </main>
+
+      {/* Announcements & Upcoming Events Section */}
+      <section className="relative z-10 max-w-6xl w-full mx-auto px-6 sm:px-10 pb-20">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 bg-amber-500/[0.03] text-amber-200/90 text-[11px] sf-text-ui font-medium px-3.5 py-1.5 rounded-full border border-amber-400/15 backdrop-blur-md tracking-wider uppercase mb-3">
+              <Calendar className="w-3 h-3 text-amber-400" />
+              <span>Community Updates</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 sf-display-ui">
+              Upcoming Events & Announcements
+            </h2>
+          </div>
+          <p className="text-sm text-slate-400 max-w-md">
+            Stay informed on upcoming church gatherings, fellowship activities, and important schedule notices.
+          </p>
+        </div>
+
+        {loadingAnnouncements ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="bg-slate-950/40 border border-amber-400/10 backdrop-blur-lg p-6 rounded-2xl animate-pulse h-48" />
+            ))}
+          </div>
+        ) : announcements.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {announcements.map((item) => {
+              const eventDateObj = new Date(item.event_date);
+              const formattedDate = eventDateObj.toLocaleDateString("en-US", {
+                timeZone: "Asia/Manila",
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              });
+              const formattedTime = eventDateObj.toLocaleTimeString("en-US", {
+                timeZone: "Asia/Manila",
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              });
+
+              return (
+                <div
+                  key={item.id}
+                  className="bg-slate-950/40 border border-amber-400/10 hover:border-amber-400/30 backdrop-blur-lg p-6 rounded-2xl transition-all duration-300 space-y-4 group flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono bg-amber-500/10 text-amber-300 border border-amber-400/20 px-2.5 py-1 rounded-md">
+                        <Calendar className="w-3 h-3" />
+                        {formattedDate}
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-mono bg-slate-900 text-slate-300 border border-slate-800 px-2.5 py-1 rounded-md">
+                        <Clock className="w-3 h-3 text-amber-400" />
+                        {formattedTime}
+                      </span>
+                    </div>
+
+                    <h3 className="feature-title text-slate-100 group-hover:text-amber-300 transition-colors">
+                      {item.title}
+                    </h3>
+
+                    <p className="feature-body text-slate-300/80 line-clamp-3">
+                      {item.description}
+                    </p>
+                  </div>
+
+                  <div className="pt-4 border-t border-amber-400/10 flex items-center justify-between text-xs text-slate-400">
+                    <span className="uppercase tracking-wider text-[10px] text-amber-400/80 font-semibold">MCGC Announcement</span>
+                    <span className="text-amber-300 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 font-medium">
+                      View <ChevronRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-slate-950/40 border border-amber-400/10 backdrop-blur-lg p-8 rounded-2xl text-center space-y-2">
+            <p className="text-slate-300 font-medium">No upcoming announcements right now.</p>
+            <p className="text-slate-500 text-sm">Check back soon for upcoming church events and activities.</p>
+          </div>
+        )}
+      </section>
 
       {/* Feature Cards Section */}
       <section className="relative z-10 max-w-6xl w-full mx-auto px-6 sm:px-10 pb-24 sm:pb-32">
