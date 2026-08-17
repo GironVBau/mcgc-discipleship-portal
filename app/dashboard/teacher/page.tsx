@@ -1,4 +1,3 @@
-```tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -351,11 +350,8 @@ export default function TeacherDashboard() {
         )
       );
 
-      setActionSuccess(
-        `Exam approval ${
-          newStatus ? "granted" : "revoked"
-        } successfully.`
-      );
+      const statusText = newStatus ? "granted" : "revoked";
+      setActionSuccess(`Exam approval ${statusText} successfully.`);
 
       router.refresh();
     } catch (error: any) {
@@ -1113,4 +1109,3 @@ export default function TeacherDashboard() {
     </div>
   );
 }
-```
