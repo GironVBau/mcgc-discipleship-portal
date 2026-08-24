@@ -151,38 +151,58 @@ export default function Home() {
   }, []);
 
   /* =======================================================
-     FETCH FRA & FCA RESULTS
+     FETCH FRA & FCA RESULTS (SAFE 2-STEP QUERY)
   ======================================================= */
 
   useEffect(() => {
     async function fetchAssessmentResults() {
       try {
-        const [fraResult, fcaResult] = await Promise.all([
-          supabase
-            .from("fra_passers")
-            .select("*")
-            .order("score_percentage", {
-              ascending: false,
-            }),
+        const { data: submissions, error: subError } = await supabase
+          .from("student_exam_submissions")
+          .select("id, percentage, passed, course_id, user_id")
+          .eq("passed", true)
+          .order("percentage", { ascending: false });
 
-          supabase
-            .from("fca_passers")
-            .select("*")
-            .order("score_percentage", {
-              ascending: false,
-            }),
-        ]);
-
-        if (fraResult.error) {
-          console.error("FRA error:", fraResult.error);
-        } else if (fraResult.data) {
-          setFraPassers(fraResult.data);
+        if (subError) {
+          console.error("Submission fetch error:", JSON.stringify(subError, null, 2));
+          return;
         }
 
-        if (fcaResult.error) {
-          console.error("FCA error:", fcaResult.error);
-        } else if (fcaResult.data) {
-          setFcaPassers(fcaResult.data);
+        if (submissions && submissions.length > 0) {
+          const userIds = [...new Set(submissions.map((s: any) => s.user_id))];
+          const courseIds = [...new Set(submissions.map((s: any) => s.course_id))];
+
+          const [profilesRes, coursesRes] = await Promise.all([
+            supabase.from("profiles").select("id, full_name").in("id", userIds),
+            supabase.from("courses").select("id, slug, title").in("id", courseIds),
+          ]);
+
+          const profileMap = new Map();
+          profilesRes.data?.forEach((p: any) => profileMap.set(p.id, p.full_name));
+
+          const courseMap = new Map();
+          coursesRes.data?.forEach((c: any) => courseMap.set(c.id, c.slug));
+
+          const formattedPassers = submissions.map((sub: any) => {
+            return {
+              id: sub.id,
+              student_name: profileMap.get(sub.user_id) || "Discipleship Student",
+              score_percentage: Number(sub.percentage) || 0,
+              course_slug: courseMap.get(sub.course_id),
+            };
+          });
+
+          setFraPassers(
+            formattedPassers.filter(
+              (p: any) => p.course_slug === "foundational-discipleship" || p.course_slug === "fra"
+            )
+          );
+
+          setFcaPassers(
+            formattedPassers.filter(
+              (p: any) => p.course_slug === "fundamental-competency" || p.course_slug === "fca"
+            )
+          );
         }
       } catch (error) {
         console.error("Error fetching assessment results:", error);
@@ -803,7 +823,7 @@ export default function Home() {
                       <Trophy className="w-4 h-4" />
 
                       <span className="text-[10px] uppercase tracking-[0.18em] font-semibold">
-                        Assessment Honor Roll
+                        Assessment Exam Results
                       </span>
 
                     </div>
@@ -934,7 +954,7 @@ export default function Home() {
                       <Trophy className="w-4 h-4" />
 
                       <span className="text-[10px] uppercase tracking-[0.18em] font-semibold">
-                        Assessment Honor Roll
+                        Assessment Exam Results
                       </span>
 
                     </div>

@@ -9,57 +9,44 @@ export async function submitFRAExam(
 ) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return {
-        success: false,
-        error: 'User is not authenticated. Please log in again.',
-      };
+      console.error('Submit Error: User not authenticated', authError);
+      return { success: false, error: 'User is not authenticated.' };
     }
 
-    // 1. Fetch target course ID
+    // Fetch course ID and title using the slug
     const { data: course, error: courseError } = await supabase
       .from('courses')
-      .select('id')
+      .select('id, title')
       .eq('slug', courseSlug)
       .maybeSingle();
 
     if (courseError || !course) {
-      return {
-        success: false,
-        error: 'Target course not found for exam submission.',
-      };
+      console.error('Submit Error: Course not found', courseError);
+      return { success: false, error: 'Target course not found.' };
     }
 
-    // 2. Security Check
-    const { data: approval, error: approvalError } = await supabase
-      .from('exam_approvals')
-      .select('is_approved')
+    const targetUrl = `/courses/${courseSlug}/exam/success`;
+
+    // Prevent duplicate active submissions
+    const { data: existingSub } = await supabase
+      .from('student_exam_submissions')
+      .select('id')
       .eq('user_id', user.id)
       .eq('course_id', course.id)
       .maybeSingle();
 
-    if (approvalError) {
-      console.warn('Exam approval query warning:', approvalError);
+    if (existingSub) {
+      return { success: true, redirectUrl: targetUrl };
     }
 
-    // 3. Fetch answer key for the target course
-    const { data: questions, error: qError } = await supabase
+    // Fetch exam questions for grading
+    const { data: questions } = await supabase
       .from('exam_questions')
-      .select('question_number, correct_answer, points, part_number')
+      .select('question_number, correct_answer, points')
       .eq('course_slug', courseSlug);
-
-    if (qError) {
-      console.error('Error fetching exam questions:', qError);
-      return {
-        success: false,
-        error: `Failed to fetch question data: ${qError.message}`,
-      };
-    }
 
     let totalScore = 0;
     let totalPossiblePoints = 0;
@@ -69,12 +56,8 @@ export async function submitFRAExam(
         if (q.correct_answer !== null) {
           const points = q.points ?? 1;
           totalPossiblePoints += points;
-
-          const studentAns = studentAnswers[String(q.question_number)]
-            ?.trim()
-            .toLowerCase();
+          const studentAns = studentAnswers[String(q.question_number)]?.trim().toLowerCase();
           const correctAns = q.correct_answer.trim().toLowerCase();
-
           if (studentAns && studentAns === correctAns) {
             totalScore += points;
           }
@@ -82,16 +65,11 @@ export async function submitFRAExam(
       });
     }
 
-    const percentage =
-      totalPossiblePoints > 0
-        ? Math.round((totalScore / totalPossiblePoints) * 100)
-        : 0;
-
+    const percentage = totalPossiblePoints > 0 ? Number(((totalScore / totalPossiblePoints) * 100).toFixed(2)) : 0;
     const passed = percentage >= 85;
     const essayText = studentAnswers['essay'] || studentAnswers['6'] || '';
 
-    // 4. Record main exam submission
-    // CHANGED: Replaced 'course_slug' with 'course_id' to match your database schema
+    // Insert into student_exam_submissions matching your database schema
     const { data: examSub, error: subError } = await supabase
       .from('student_exam_submissions')
       .insert({
@@ -107,18 +85,38 @@ export async function submitFRAExam(
       .single();
 
     if (subError) {
-      console.error('Failed inserting into student_exam_submissions:', subError);
-      return {
-        success: false,
-        error: `Database Insert Error (student_exam_submissions): ${subError.message} (${subError.details || subError.code})`,
-      };
+      console.error('SUPABASE INSERT FAILED:', subError);
+      return { success: false, error: `Database Error: ${subError.message}` };
     }
 
-    // 5. Queue essay submission for review (if essay exists)
+    // --- AUTOMATIC CERTIFICATE ISSUANCE ---
+    // If they passed the exam, automatically award their certificate
+    if (passed) {
+      try {
+        // Check if certificate already exists to avoid duplicates
+        const { data: existingCert } = await supabase
+          .from('user_certificates')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('course_name', course.title)
+          .maybeSingle();
+
+        if (!existingCert) {
+          await supabase.from('user_certificates').insert({
+            user_id: user.id,
+            course_name: course.title,
+            issued_at: new Date().toISOString(),
+          });
+        }
+      } catch (certErr) {
+        console.error('Error auto-issuing certificate:', certErr);
+      }
+    }
+
+    // Optional essay log insertion wrapped in a safe try/catch block
     if (essayText) {
-      const { error: essayError } = await supabase
-        .from('user_essay_submissions')
-        .insert({
+      try {
+        await supabase.from('user_essay_submissions').insert({
           student_id: user.id,
           user_id: user.id,
           question_title: 'Practical Reflection / Essay',
@@ -128,51 +126,17 @@ export async function submitFRAExam(
           status: 'pending',
           submitted_at: new Date().toISOString(),
         });
-
-      if (essayError) {
-        console.error('Failed inserting into user_essay_submissions:', essayError);
-        return {
-          success: false,
-          error: `Database Insert Error (user_essay_submissions): ${essayError.message} (${essayError.details || essayError.code})`,
-        };
+      } catch (e) {
+        // Safe fallback if table structure differs
       }
     }
 
-    // --- 6. AUTOMATIC LEVEL UNLOCK & APPROVAL UPDATE ---
-    if (passed) {
-      await supabase
-        .from('exam_approvals')
-        .upsert(
-          {
-            user_id: user.id,
-            course_id: course.id,
-            is_approved: true,
-            approved_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,course_id' }
-        );
+    revalidatePath('/dashboard/student');
+    revalidatePath(`/courses/${courseSlug}/exam`);
 
-      revalidatePath('/dashboard/student');
-      revalidatePath('/dashboard/admin');
-      revalidatePath('/courses');
-    }
-
-    return {
-      success: true,
-      score: totalScore,
-      percentage,
-      passed,
-      message: passed
-        ? 'Congratulations! Exam passed and next level unlocked!'
-        : 'Exam submitted successfully.',
-    };
+    return { success: true, redirectUrl: targetUrl };
   } catch (err: any) {
     console.error('Fatal exception in submitFRAExam:', err);
-    return {
-      success: false,
-      error:
-        err?.message ||
-        'An unexpected server error occurred during exam submission.',
-    };
+    return { success: false, error: err?.message || 'Unexpected error occurred.' };
   }
 }

@@ -1,10 +1,8 @@
-export const dynamic = "force-dynamic";
-
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import ExamClient from "./ExamClient";
 import Link from "next/link";
-import { Lock, Clock, ArrowLeft, BookOpen, ShieldAlert } from "lucide-react";
+import { Lock, Clock, ArrowLeft, BookOpen } from "lucide-react";
 
 interface PageProps {
   params: Promise<{
@@ -13,10 +11,9 @@ interface PageProps {
 }
 
 export default async function ExamPage({ params }: PageProps) {
-  // 1. Get current course slug from URL
   const { courseSlug } = await params;
-
   const supabase = await createClient();
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -25,7 +22,6 @@ export default async function ExamPage({ params }: PageProps) {
     redirect("/login");
   }
 
-  // 2. Fetch Course Details
   const { data: course } = await supabase
     .from("courses")
     .select("id, title")
@@ -36,7 +32,7 @@ export default async function ExamPage({ params }: PageProps) {
     redirect("/courses");
   }
 
-  // 3. Verify Lesson Completion Progress
+  // 1. CHECK LESSON COMPLETION FIRST
   const { data: lessons } = await supabase
     .from("lessons")
     .select("id")
@@ -53,7 +49,6 @@ export default async function ExamPage({ params }: PageProps) {
   const completedCount = progress?.length || 0;
   const isAllLessonsCompleted = lessonIds.length > 0 && completedCount === lessonIds.length;
 
-  // STEP 3A: Lock Screen - Lessons Not Finished
   if (!isAllLessonsCompleted) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">
@@ -67,12 +62,6 @@ export default async function ExamPage({ params }: PageProps) {
               You must complete all course lessons before unlocking the exam requirement.
             </p>
           </div>
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs flex justify-between items-center">
-            <span className="text-slate-400">Lesson Progress</span>
-            <span className="text-amber-400 font-bold">
-              {completedCount} / {lessonIds.length} Completed
-            </span>
-          </div>
           <Link
             href={`/courses/${courseSlug}`}
             className="inline-flex items-center justify-center space-x-2 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl text-xs transition-all"
@@ -85,7 +74,20 @@ export default async function ExamPage({ params }: PageProps) {
     );
   }
 
-  // 4. Fetch or Register Exam Approval Row
+  // 2. CHECK SUBMISSION: If they already submitted, redirect them to the success page!
+  // This acts as the permanent lock so they cannot retake it.
+  const { data: existingSubmission } = await supabase
+    .from("student_exam_submissions") 
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("course_id", course.id)
+    .maybeSingle();
+
+  if (existingSubmission) {
+    redirect(`/courses/${courseSlug}/exam/success`);
+  }
+
+  // 3. Check Exam Approval Row (Only checked if they haven't submitted yet)
   let { data: approval } = await supabase
     .from("exam_approvals")
     .select("is_approved")
@@ -93,16 +95,16 @@ export default async function ExamPage({ params }: PageProps) {
     .eq("course_id", course.id)
     .maybeSingle();
 
-  // If student finished lessons but no approval record exists yet, create one in 'pending' state
   if (!approval) {
     await supabase.from("exam_approvals").insert({
       user_id: user.id,
       course_id: course.id,
       is_approved: false,
     });
+    approval = { is_approved: false };
   }
 
-  // STEP 4A: Lock Screen - Pending Teacher Approval
+  // 4. Pending teacher approval screen
   if (!approval?.is_approved) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">
@@ -113,11 +115,8 @@ export default async function ExamPage({ params }: PageProps) {
           <div className="space-y-2">
             <h1 className="text-xl font-bold text-white">Awaiting Teacher Approval</h1>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Congratulations on completing all lessons! Your exam request has been logged and is pending approval from your teacher or administrator.
+              Your exam request has been logged and is pending approval from your teacher to take the test.
             </p>
-          </div>
-          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl p-4 text-xs font-semibold">
-            Status: Pending Teacher Review
           </div>
           <Link
             href={`/courses/${courseSlug}`}
@@ -131,7 +130,6 @@ export default async function ExamPage({ params }: PageProps) {
     );
   }
 
-  // 5. Approved -> Render Assessment Screen
   return (
     <ExamClient
       courseId={course.id}
@@ -141,3 +139,5 @@ export default async function ExamPage({ params }: PageProps) {
     />
   );
 }
+
+export const dynamic = "force-dynamic";

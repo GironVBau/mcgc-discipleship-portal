@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { submitFRAExam } from '@/app/actions/submit-exam';
 
@@ -26,13 +25,12 @@ interface ExamClientProps {
   courseTitle: string;
 }
 
-export default function ExamClient({
+const ExamClient = ({
   courseId,
   userId,
   courseSlug,
   courseTitle,
-}: ExamClientProps) {
-  const router = useRouter();
+}: ExamClientProps) => {
   const supabase = createClient();
 
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -83,22 +81,29 @@ export default function ExamClient({
   const executeSubmission = async (answersToSubmit: Record<string, string>) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    
     try {
-      const essayQuestions = questions.filter((q) => [5, 6].includes(q.part_number));
+      const essayQuestions = questions.filter((q) => q.part_title.toUpperCase().includes('ESSAY'));
       let mainEssay = '';
       for (const eq of essayQuestions) {
         const val = answersToSubmit[String(eq.question_number)];
-        if (val) { mainEssay = val; break; }
+        if (val) {
+          mainEssay = val;
+          break;
+        }
       }
       const finalPayload = { ...answersToSubmit, essay: mainEssay || answersToSubmit['essay'] || '' };
+      
       const res = await submitFRAExam(finalPayload, courseSlug);
 
-      if (!res?.success) throw new Error(res?.error || 'Submission failed');
-      alert(`Exam Submitted Successfully!\nScore: ${res.score} points`);
-      router.push('/courses');
+      if (res && res.success && res.redirectUrl) {
+        window.location.href = res.redirectUrl;
+      } else {
+        alert("Submission Failed: " + (res?.error || "Unknown error from server"));
+        setIsSubmitting(false);
+      }
     } catch (err: any) {
-      alert(`Error: ${err.message}`);
-    } finally {
+      alert(`Critical Error: ${err?.message || err}`);
       setIsSubmitting(false);
     }
   };
@@ -124,105 +129,149 @@ export default function ExamClient({
           <p className="text-xs opacity-60">Passing Score: 85% | Total Time: 90 Minutes</p>
         </div>
 
-        {questions.map((q) => (
-          <div key={q.id} className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
-            <div className="flex justify-between items-start opacity-70 text-xs font-bold uppercase">
-              <span>{q.part_title}</span>
-              <span>{q.points} Points</span>
-            </div>
+        {questions.map((q) => {
+          const isModifiedTrueFalse = q.part_title.toUpperCase().includes('MODIFIED TRUE OR FALSE');
+          const isTwoStatement = q.part_title.toUpperCase().includes('TWO-STATEMENT');
+          const isMultipleChoice = q.options && q.options.length > 0 && !isModifiedTrueFalse && !isTwoStatement;
+          const isTextAreaOrInput = !isMultipleChoice && !isModifiedTrueFalse && !isTwoStatement;
 
-            <p className="text-sm font-semibold">{q.question_number}. {q.question_text}</p>
-
-            {/* Multiple Choice Section */}
-            {q.part_number === 1 && q.options && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
-                {q.options.map((opt: any) => {
-                  const val = typeof opt === 'string' ? opt : (opt.value ?? opt.id ?? opt);
-                  const label = typeof opt === 'string' ? opt : (opt.label ?? opt.text ?? opt);
-                  const isSelected = answers[String(q.question_number)] === String(val);
-
-                  return (
-                    <label 
-                      key={String(val)} 
-                      className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                        isSelected 
-                          ? 'bg-blue-600 border-blue-400 text-white' 
-                          : 'bg-white/5 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      <input 
-                        type="radio" 
-                        className="hidden" 
-                        name={`q_${q.question_number}`}
-                        value={String(val)} 
-                        checked={isSelected} 
-                        onChange={(e) => handleInputChange(q.question_number, e.target.value)} 
-                      />
-                      {label}
-                    </label>
-                  );
-                })}
+          return (
+            <div key={q.id} className="bg-white/5 p-6 rounded-2xl border border-white/10 space-y-4">
+              <div className="flex justify-between items-start opacity-70 text-xs font-bold uppercase">
+                <span>{q.part_title}</span>
+                <span>{q.points} {q.points === 1 ? 'Point' : 'Points'}</span>
               </div>
-            )}
 
-            {/* Part 2: Modified True or False Section */}
-            {q.part_number === 2 && (
-              <div className="space-y-4 pt-2">
-                <div className="flex flex-wrap gap-3">
-                  {(q.options && q.options.length > 0 ? q.options : ['TRUE', 'FALSE']).map((opt: any) => {
-                    const val = typeof opt === 'string' ? opt : opt.value;
+              <div className="text-sm font-semibold flex items-start gap-1.5">
+                <span>{q.question_number}.</span>
+                <span className="leading-relaxed" dangerouslySetInnerHTML={{ __html: q.question_text }} />
+              </div>
+
+              {isTwoStatement && (
+                <div className="space-y-3 pt-2">
+                  <div className="p-3 bg-black/20 rounded-xl border border-white/5 text-xs space-y-1">
+                    <p className="font-bold text-amber-300">Option Key Reference:</p>
+                    <p>A - Both statements are TRUE.</p>
+                    <p>B - Statement I is TRUE; Statement II is FALSE.</p>
+                    <p>C - Statement I is FALSE; Statement II is TRUE.</p>
+                    <p>D - Both statements are FALSE.</p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {['A', 'B', 'C', 'D'].map((optCode) => {
+                      const isSelected = answers[String(q.question_number)] === optCode;
+                      return (
+                        <button
+                          key={optCode}
+                          type="button"
+                          onClick={() => handleInputChange(q.question_number, optCode)}
+                          className={`py-2 rounded-xl font-bold border transition-all text-sm ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-400 text-white'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          {optCode}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {isMultipleChoice && q.options && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm pt-2">
+                  {q.options.map((opt: any) => {
+                    const cleanOpt = typeof opt === 'string' ? opt : String(opt);
+                    const val = cleanOpt.charAt(0);
                     const isSelected = answers[String(q.question_number)] === val;
+
                     return (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => handleInputChange(q.question_number, val)}
-                        className={`px-4 py-2 rounded-xl font-bold border transition-all text-sm ${
-                          isSelected
-                            ? 'bg-blue-600 border-blue-400 text-white'
+                      <label 
+                        key={cleanOpt} 
+                        className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'bg-blue-600 border-blue-400 text-white' 
                             : 'bg-white/5 border-white/10 hover:bg-white/10'
                         }`}
                       >
-                        {val}
-                      </button>
+                        <input 
+                          type="radio" 
+                          className="hidden" 
+                          name={`q_${q.question_number}`}
+                          value={val} 
+                          checked={isSelected} 
+                          onChange={(e) => handleInputChange(q.question_number, e.target.value)} 
+                        />
+                        {cleanOpt}
+                      </label>
                     );
                   })}
                 </div>
-                
-                {/* Conditional Correction Input for False answers */}
-                {answers[String(q.question_number)] === 'FALSE' && (
-                  <input
-                    type="text"
-                    placeholder="Correction: Write the word that makes this statement false..."
-                    className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    onChange={(e) => handleInputChange(`${q.question_number}_correction`, e.target.value)}
-                    value={answers[`${q.question_number}_correction`] || ''}
-                  />
-                )}
-              </div>
-            )}
+              )}
 
-            {/* Inputs & Textareas */}
-            {[3, 4, 5, 6].includes(q.part_number) && (
-              <textarea
-                rows={q.part_number > 4 ? 4 : 1}
-                placeholder="Type your answer here..."
-                value={answers[String(q.question_number)] || ''}
-                onChange={(e) => handleInputChange(q.question_number, e.target.value)}
-                className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            )}
-          </div>
-        ))}
+              {isModifiedTrueFalse && (
+                <div className="space-y-4 pt-2">
+                  <div className="flex flex-wrap gap-3">
+                    {['TRUE', 'FALSE'].map((val) => {
+                      const isSelected = answers[String(q.question_number)] === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => handleInputChange(q.question_number, val)}
+                          className={`px-6 py-2 rounded-xl font-bold border transition-all text-sm ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-400 text-white'
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          {val}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  {answers[String(q.question_number)] === 'FALSE' && (
+                    <input
+                      type="text"
+                      placeholder="Correction: Write the word or phrase that replaces the underlined term..."
+                      className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => handleInputChange(`${q.question_number}_correction`, e.target.value)}
+                      value={answers[`${q.question_number}_correction`] || ''}
+                    />
+                  )}
+                </div>
+              )}
+
+              {isTextAreaOrInput && (
+                <textarea
+                  rows={q.part_title.toUpperCase().includes('ESSAY') ? 4 : 1}
+                  placeholder="Type your answer here..."
+                  value={answers[String(q.question_number)] || ''}
+                  onChange={(e) => handleInputChange(q.question_number, e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 p-3 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              )}
+            </div>
+          );
+        })}
 
         <button
-          onClick={() => executeSubmission(answers)}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            executeSubmission(answers);
+          }}
           disabled={isSubmitting}
           className="w-full bg-amber-400 text-slate-950 font-extrabold py-4 rounded-2xl transition-all hover:bg-amber-300 disabled:opacity-50"
         >
-          {isSubmitting ? 'Submitting...' : 'Submit Assessment'}
+          {isSubmitting ? 'Submitting Assessment...' : 'Submit Assessment'}
         </button>
       </main>
     </div>
   );
-}
+};
+
+export default ExamClient;
+
+export const dynamic = "force-dynamic";
