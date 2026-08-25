@@ -15,7 +15,7 @@ export default async function LessonPage({ params }: PageProps) {
   const { courseSlug, lessonSlug } = await params;
   const supabase = await createClient();
 
-  // 1. Fetch Course
+  // 1. Fetch Course first (needed to know the course ID for everything else)
   const { data: course, error: courseError } = await supabase
     .from('courses')
     .select('*')
@@ -40,7 +40,7 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
-  // 2. Fetch Lesson
+  // Determine lesson query conditions
   const numericLessonNumber = parseInt(lessonSlug.replace('lesson-', ''), 10);
   let lessonQuery = supabase.from('lessons').select('*').eq('course_id', course.id);
   
@@ -50,6 +50,7 @@ export default async function LessonPage({ params }: PageProps) {
     lessonQuery = lessonQuery.eq('id', lessonSlug);
   }
 
+  // 2. Fetch the Lesson
   const { data: lesson, error: lessonError } = await lessonQuery.single();
 
   if (lessonError || !lesson) {
@@ -70,20 +71,26 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
-  // 3. Fetch Next Lesson
-  const { data: nextLesson } = await supabase
-    .from('lessons')
-    .select('lesson_number')
-    .eq('course_id', course.id)
-    .gt('lesson_number', lesson.lesson_number)
-    .order('lesson_number', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // 3. Fetch Next Lesson, User Auth, and Progress concurrently using Promise.all()
+  const [nextLessonResponse, userResponse, progressResponse] = await Promise.all([
+    supabase
+      .from('lessons')
+      .select('lesson_number')
+      .eq('course_id', course.id)
+      .gt('lesson_number', lesson.lesson_number)
+      .order('lesson_number', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase.auth.getUser(),
+    // We can fetch user progress right away if we get user context, but auth must resolve first.
+    // To handle auth safely inside Promise.all, we fetch session first or query progress conditionally.
+    Promise.resolve(null) // placeholder or let's handle progress right after user resolves
+  ]);
 
+  const nextLesson = nextLessonResponse.data;
   const nextLessonSlug = nextLesson ? `lesson-${nextLesson.lesson_number}` : null;
+  const user = userResponse.data.user;
 
-  // 4. User Progress Tracking
-  const { data: { user } } = await supabase.auth.getUser();
   let initialIsStudied = false; 
 
   if (user) {
@@ -99,7 +106,7 @@ export default async function LessonPage({ params }: PageProps) {
     }
   }
 
-  // 5. Smart Content Parser
+  // 4. Smart Content Parser
   const rawPoints: string[] = lesson.teaching_points || [];
 
   const isTaggedFormat = rawPoints.some(p => 

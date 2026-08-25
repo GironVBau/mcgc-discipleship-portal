@@ -7,7 +7,7 @@ export default async function CoursesPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Fetch all courses
+  // 1. Fetch all courses first (needed to get course IDs)
   const { data: courses } = await supabase.from('courses').select('*');
 
   const foundationalCourse = courses?.find(
@@ -27,11 +27,38 @@ export default async function CoursesPage() {
   let isLevel1Approved = false;
 
   if (user && foundationalCourse) {
-    // 1. Fetch Exam Submissions
-    const { data: examSubmissions } = await supabase
-      .from('student_exam_submissions')
-      .select('course_id, passed')
-      .eq('user_id', user.id);
+    // 2. Fetch all independent user progress checks in PARALLEL using Promise.all()
+    const [
+      examSubmissionsRes,
+      surveyResultRes,
+      level1LessonsRes,
+      approvalRes
+    ] = await Promise.all([
+      supabase
+        .from('student_exam_submissions')
+        .select('course_id, passed')
+        .eq('user_id', user.id),
+      supabase
+        .from('user_spiritual_gifts_results')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('lessons')
+        .select('id')
+        .eq('course_id', foundationalCourse.id),
+      supabase
+        .from('exam_approvals')
+        .select('is_approved')
+        .eq('user_id', user.id)
+        .eq('course_id', foundationalCourse.id)
+        .maybeSingle()
+    ]);
+
+    const examSubmissions = examSubmissionsRes.data;
+    const surveyResult = surveyResultRes.data;
+    const level1Lessons = level1LessonsRes.data;
+    const approval = approvalRes.data;
 
     passedLevel1 = !!examSubmissions?.some(
       (r) => r.course_id === foundationalCourse.id && r.passed
@@ -40,22 +67,10 @@ export default async function CoursesPage() {
       (r) => r.course_id === fundamentalCourse?.id && r.passed
     );
 
-    // 2. Check Spiritual Gifts Survey Results
-    const { data: surveyResult } = await supabase
-      .from('user_spiritual_gifts_results')
-      .select('id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
     completedSurvey = !!surveyResult;
+    isLevel1Approved = !!approval?.is_approved;
 
-    // 3. Strict Check: Fetch total Level 1 lessons vs. user completed lessons
-    const { data: level1Lessons } = await supabase
-      .from('lessons')
-      .select('id')
-      .eq('course_id', foundationalCourse.id);
-
-    let completedProgress: any[] = [];
+    // 3. If we have level 1 lessons, check individual completion progress
     if (level1Lessons && level1Lessons.length > 0) {
       const lessonIds = level1Lessons.map((l) => l.id);
 
@@ -66,19 +81,9 @@ export default async function CoursesPage() {
         .eq('completed', true)
         .in('lesson_id', lessonIds);
 
-      completedProgress = progress || [];
+      const completedProgress = progress || [];
       allLevel1LessonsCompleted = completedProgress.length === level1Lessons.length;
     }
-
-    // 4. Check Teacher/Admin Exam Approval Status
-    const { data: approval } = await supabase
-      .from('exam_approvals')
-      .select('is_approved')
-      .eq('user_id', user.id)
-      .eq('course_id', foundationalCourse.id)
-      .maybeSingle();
-
-    isLevel1Approved = !!approval?.is_approved;
   }
 
   // Calculate Lock & Exam Access States

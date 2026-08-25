@@ -11,12 +11,11 @@ export default async function CourseDetailPage({ params }: PageProps) {
   const { courseSlug } = await params;
   const supabase = await createClient();
 
-  // 1. Fetch Course details
-  const { data: course, error: courseError } = await supabase
-    .from("courses")
-    .select("*")
-    .eq("slug", courseSlug)
-    .single();
+  // 1. Fetch Course details & User concurrently
+  const [{ data: course, error: courseError }, { data: { user } }] = await Promise.all([
+    supabase.from("courses").select("*").eq("slug", courseSlug).single(),
+    supabase.auth.getUser()
+  ]);
 
   if (courseError || !course) {
     return (
@@ -44,41 +43,45 @@ export default async function CourseDetailPage({ params }: PageProps) {
     );
   }
 
-  // 2. Fetch Lessons for this course
-  const { data: lessons } = await supabase
-    .from("lessons")
-    .select("*")
-    .eq("course_id", course.id)
-    .order("lesson_number", { ascending: true });
+  // 2. Fetch Lessons, Progress, and Approvals all in PARALLEL using Promise.all()
+  const [lessonsRes, progressRes, approvalRes] = await Promise.all([
+    supabase
+      .from("lessons")
+      .select("*")
+      .eq("course_id", course.id)
+      .order("lesson_number", { ascending: true }),
+    user
+      ? supabase
+          .from("user_lesson_progress")
+          .select("lesson_id")
+          .eq("user_id", user.id)
+          .eq("completed", true)
+      : Promise.resolve({ data: null }),
+    user
+      ? supabase
+          .from("exam_approvals")
+          .select("is_approved")
+          .eq("user_id", user.id)
+          .eq("course_id", course.id)
+          .maybeSingle()
+      : Promise.resolve({ data: null })
+  ]);
 
+  const lessons = lessonsRes.data;
   const totalLessons = lessons?.length || 0;
 
-  // 3. Fetch User Progress & Exam Approval Status
-  const { data: { user } } = await supabase.auth.getUser();
   const completedLessonIds = new Set<string>();
-  let isApprovedByTeacher = false;
-
-  if (user && lessons && lessons.length > 0) {
-    const lessonIds = lessons.map((l) => l.id);
-    const { data: progressData } = await supabase
-      .from("user_lesson_progress")
-      .select("lesson_id")
-      .eq("user_id", user.id)
-      .eq("completed", true)
-      .in("lesson_id", lessonIds);
-
-    progressData?.forEach((p) => completedLessonIds.add(p.lesson_id));
-
-    // Check teacher approval status
-    const { data: approvalData } = await supabase
-      .from("exam_approvals")
-      .select("is_approved")
-      .eq("user_id", user.id)
-      .eq("course_id", course.id)
-      .maybeSingle();
-
-    isApprovedByTeacher = approvalData?.is_approved ?? false;
+  if (progressRes.data && lessons) {
+    const lessonIds = new Set(lessons.map((l) => l.id));
+    progressRes.data.forEach((p) => {
+      if (lessonIds.has(p.lesson_id)) {
+        completedLessonIds.add(p.lesson_id);
+      }
+    });
   }
+
+  // Fixed scope reference for teacher approval
+  const isApprovedByTeacher = approvalRes.data?.is_approved ?? false;
 
   const completedCount = completedLessonIds.size;
   const progressPercentage = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
