@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, ArrowRight, Loader2, Award } from "lucide-react";
+import { Check, ArrowRight, Loader2, Award, WifiOff } from "lucide-react";
 
 interface MarkAsStudiedButtonProps {
   lessonId: string;
@@ -26,6 +26,37 @@ export default function MarkAsStudiedButton({
   const [isCompleted, setIsCompleted] = useState(initialIsStudied);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isOfflineSaved, setIsOfflineSaved] = useState(false);
+
+  const STORAGE_KEY = `mcgc_offline_progress_${lessonId}`;
+
+  // Helper to sync pending offline data to Supabase
+  const syncOfflineQueue = async (userId: string) => {
+    try {
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      if (savedData && navigator.onLine) {
+        const { completed, updatedAt } = JSON.parse(savedData);
+        
+        const { error } = await supabase.from("user_lesson_progress").upsert(
+          {
+            user_id: userId,
+            lesson_id: lessonId,
+            completed: completed,
+            updated_at: updatedAt,
+          },
+          { onConflict: "user_id,lesson_id" }
+        );
+
+        if (!error) {
+          localStorage.removeItem(STORAGE_KEY);
+          setIsOfflineSaved(false);
+          router.refresh();
+        }
+      }
+    } catch (err) {
+      console.error("Background sync failed:", err);
+    }
+  };
 
   useEffect(() => {
     async function checkStatus() {
@@ -34,6 +65,22 @@ export default function MarkAsStudiedButton({
       } = await supabase.auth.getUser();
 
       if (user) {
+        // Check if there is an unsynced offline state saved first
+        const localSaved = localStorage.getItem(STORAGE_KEY);
+        if (localSaved && !navigator.onLine) {
+          const parsed = JSON.parse(localSaved);
+          setIsCompleted(parsed.completed);
+          setIsOfflineSaved(true);
+          setLoading(false);
+          return;
+        }
+
+        // If online, try syncing any past offline actions first
+        if (navigator.onLine) {
+          await syncOfflineQueue(user.id);
+        }
+
+        // Fetch from Supabase
         const { data } = await supabase
           .from("user_lesson_progress")
           .select("completed")
@@ -49,6 +96,19 @@ export default function MarkAsStudiedButton({
     }
 
     checkStatus();
+
+    // Listen for when the browser comes back online
+    const handleOnline = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await syncOfflineQueue(user.id);
+      }
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
   }, [lessonId, supabase]);
 
   const handleToggleComplete = async () => {
@@ -64,14 +124,28 @@ export default function MarkAsStudiedButton({
     }
 
     const nextState = !isCompleted;
+    const updatedAt = new Date().toISOString();
 
-    // Direct UPSERT so database triggers (for admin/teacher counts) execute correctly
+    // Check if user is offline
+    if (!navigator.onLine) {
+      // Save locally to localStorage queue
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ completed: nextState, updatedAt })
+      );
+      setIsCompleted(nextState);
+      setIsOfflineSaved(true);
+      setSaving(false);
+      return;
+    }
+
+    // Direct UPSERT online
     const { error } = await supabase.from("user_lesson_progress").upsert(
       {
         user_id: user.id,
         lesson_id: lessonId,
         completed: nextState,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt,
       },
       { onConflict: "user_id,lesson_id" }
     );
@@ -81,7 +155,9 @@ export default function MarkAsStudiedButton({
       alert(`Failed to update progress: ${error.message}`);
     } else {
       setIsCompleted(nextState);
-      // Refresh current route to sync layout progress indicators and dashboards
+      setIsOfflineSaved(false);
+      // Clean up any old local cache if successful
+      localStorage.removeItem(STORAGE_KEY);
       router.refresh();
     }
     setSaving(false);
@@ -97,58 +173,66 @@ export default function MarkAsStudiedButton({
   }
 
   return (
-    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
-      
-      {/* Complete / Unmark Toggle Button */}
-      <button
-        onClick={handleToggleComplete}
-        disabled={saving}
-        className={`px-5 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 border shadow-sm ${
-          isCompleted
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
-            : "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600"
-        }`}
-      >
-        {saving ? (
-          <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
-        ) : isCompleted ? (
-          <>
-            <Check className="w-4 h-4 text-emerald-400" />
-            <span>Completed (Click to undo)</span>
-          </>
-        ) : (
-          <span>Mark as Studied</span>
-        )}
-      </button>
+    <div className="space-y-2">
+      {/* Offline notification badge */}
+      {isOfflineSaved && (
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-400 bg-amber-950/30 border border-amber-500/20 px-3 py-1.5 rounded-xl">
+          <WifiOff className="w-3.5 h-3.5 animate-pulse" />
+          <span>You are offline. Progress saved locally and will auto-sync when connected.</span>
+        </div>
+      )}
 
-      {/* Navigation or Exam Action */}
-      <div className="flex items-center justify-end">
-        {isLastLesson || !nextLessonSlug ? (
-          /* Final Lesson Action: Route to Exam */
-          <Link
-            href={`/courses/${courseSlug}/exam`}
-            className={`w-full sm:w-auto px-6 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-2 transition-all shadow-md ${
-              isCompleted
-                ? "bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/10"
-                : "bg-slate-800 text-slate-500 border border-slate-700"
-            }`}
-          >
-            <Award className="w-4 h-4" />
-            <span>Finish & Go to Exam</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        ) : (
-          /* Standard Next Lesson Action */
-          <Link
-            href={`/courses/${courseSlug}/lessons/${nextLessonSlug}`}
-            className="w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-amber-400/10"
-          >
-            <span>Next Lesson</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        )}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 bg-slate-900/80 border border-slate-800 rounded-2xl backdrop-blur-md">
+        
+        {/* Complete / Unmark Toggle Button */}
+        <button
+          onClick={handleToggleComplete}
+          disabled={saving}
+          className={`px-5 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 border shadow-sm cursor-pointer ${
+            isCompleted
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
+              : "bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600"
+          }`}
+        >
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin text-amber-400" />
+          ) : isCompleted ? (
+            <>
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>Completed (Click to undo)</span>
+            </>
+          ) : (
+            <span>Mark as Studied</span>
+          )}
+        </button>
+
+        {/* Navigation or Exam Action */}
+        <div className="flex items-center justify-end">
+          {isLastLesson || !nextLessonSlug ? (
+            <Link
+              href={`/courses/${courseSlug}/exam`}
+              className={`w-full sm:w-auto px-6 py-3 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-2 transition-all shadow-md ${
+                isCompleted
+                  ? "bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-amber-400/10"
+                  : "bg-slate-800 text-slate-500 border border-slate-700"
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>Finish & Go to Exam</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <Link
+              href={`/courses/${courseSlug}/lessons/${nextLessonSlug}`}
+              className="w-full sm:w-auto bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold px-6 py-3 rounded-xl text-xs flex items-center justify-center space-x-2 transition-all shadow-md shadow-amber-400/10"
+            >
+              <span>Next Lesson</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
+        </div>
+
       </div>
-
     </div>
   );
 }
