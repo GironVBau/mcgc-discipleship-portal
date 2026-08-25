@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   description:
     "An original discipleship framework developed for MCGC, providing a structured and intentional progression of biblical instruction for every member.",
   applicationName: "MCGC Discipleship System",
+  manifest: "/manifest.json", // <-- PWA Manifest linked here
   keywords: [
     "MCGC",
     "MCGC Discipleship System",

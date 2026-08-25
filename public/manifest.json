@@ -1,0 +1,21 @@
+{
+  "name": "MCGC Discipleship S.O.P.",
+  "short_name": "MCGC S.O.P.",
+  "description": "Official discipleship and course completion tracking system for Ministry of Christ's Great Commission Church Inc.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A192F",
+  "theme_color": "#0A192F",
+  "icons": [
+    {
+      "src": "/1080.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/1080.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
