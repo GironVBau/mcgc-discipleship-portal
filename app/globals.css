@@ -43,6 +43,15 @@ body {
   letter-spacing: -0.011em;
 }
 
+/* --- CERTIFICATE CUSTOM UTILITIES --- */
+.font-cursive {
+  font-family: 'Great Vibes', cursive;
+}
+
+.clip-v-cut {
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
 /* --- PRINT / PDF CERTIFICATE STYLING --- */
 @media print {
   body * {
@@ -64,5 +73,6 @@ body {
     padding: 0;
     box-shadow: none !important;
     border: none !important;
+    background: white !important;
   }
 }

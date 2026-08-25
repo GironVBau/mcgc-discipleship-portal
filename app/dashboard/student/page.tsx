@@ -7,7 +7,6 @@ import {
   BookOpen, 
   Clock, 
   Award, 
-  ArrowRight, 
   LogOut, 
   User, 
   Sparkles,
@@ -16,21 +15,32 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Trash2
+  Trash2,
+  X,
+  Printer,
+  ExternalLink,
+  Lock,
+  AlertCircle
 } from "lucide-react";
-
-interface CourseData {
-  id: string;
-  title: string;
-  description: string;
-  slug: string;
-}
 
 interface LessonData {
   id: string;
   lesson_number: number;
   title: string;
-  course_id: string;
+  isCompleted: boolean;
+}
+
+interface CourseProgress {
+  id: string;
+  title: string;
+  description: string;
+  slug: string;
+  sequenceOrder: number;
+  totalLessons: number;
+  completedLessonsCount: number;
+  isCompleted: boolean;
+  isUnlocked: boolean;
+  lessons: LessonData[];
 }
 
 interface CertificateData {
@@ -59,25 +69,15 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<{ full_name: string } | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true);
 
-  // All courses fetched from DB
-  const [courses, setCourses] = useState<CourseData[]>([]);
-  const [level1Course, setLevel1Course] = useState<CourseData | null>(null);
-  const [level2Course, setLevel2Course] = useState<CourseData | null>(null);
-  const [level3Course, setLevel3Course] = useState<CourseData | null>(null);
+  // Dynamic courses and active track
+  const [coursesProgress, setCoursesProgress] = useState<CourseProgress[]>([]);
+  const [activeCourse, setActiveCourse] = useState<CourseProgress | null>(null);
 
-  // Lesson tracking for all levels to determine progression
-  const [level1Lessons, setLevel1Lessons] = useState<LessonData[]>([]);
-  const [level1CompletedIds, setLevel1CompletedIds] = useState<Set<string>>(new Set());
-  
-  const [level2Lessons, setLevel2Lessons] = useState<LessonData[]>([]);
-  const [level2CompletedIds, setLevel2CompletedIds] = useState<Set<string>>(new Set());
-
-  // Active view states
-  const [activeLessons, setActiveLessons] = useState<LessonData[]>([]);
-  const [completedLessonIds, setCompletedLessonIds] = useState<Set<string>>(new Set());
-
+  // Certificates
   const [certificates, setCertificates] = useState<CertificateData[]>([]);
+  const [selectedCertificate, setSelectedCertificate] = useState<CertificateData | null>(null);
 
   // Real-time Clock & Interactive Calendar state
   const [mounted, setMounted] = useState(false);
@@ -105,105 +105,146 @@ export default function StudentDashboard() {
     setCurrentNote(dateNotes[selectedDateKey] || "");
   }, [selectedDateKey, dateNotes]);
 
+  // Automated Fetching Engine matching `user_lesson_progress` and `user_certificates` schemas
   const loadStudentData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setErrorMessage(null);
+  try {
+    setErrorMessage(null);
 
-      const savedNotes = localStorage.getItem("mcgc_student_date_notes");
-      if (savedNotes) {
-        try { setDateNotes(JSON.parse(savedNotes)); } catch (e) { console.error(e); }
+    // 1. Fetch user FIRST so it is defined for everything below
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    
+    console.log("ACTIVE USER ID:", user?.id);
+
+    if (!user || userErr) {
+      setIsAuthenticated(false);
+      setCertificates([]);
+      return; // Stop execution if no user is logged in
+    } else {
+      setIsAuthenticated(true);
+    }
+
+    // Local storage sync
+    const savedNotes = localStorage.getItem("mcgc_student_date_notes");
+    if (savedNotes) {
+      try { setDateNotes(JSON.parse(savedNotes)); } catch (e) { console.error(e); }
+    }
+
+    // ... continue with your Promise.all queries using `user.id` ...
+
+      // ADD THIS CHECK:
+console.log("ACTIVE USER ID:", user?.id);
+
+if (!user) {
+  setIsAuthenticated(false);
+  return; // Stop here if user isn't loaded yet
+      } else {
+        setIsAuthenticated(true);
       }
 
-      const savedEvents = localStorage.getItem("mcgc_student_events");
-      if (savedEvents) {
-        try { setEvents(JSON.parse(savedEvents)); } catch (e) { console.error(e); }
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
+      // Query database using optimized parallelized schema fetching
       const [
-        { data: profile },
-        { data: coursesData },
-        { data: certsData }
-      ] = await Promise.all([
-        supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
-        supabase.from("courses").select("id, title, description, slug"),
-        supabase.from("user_certificates").select("id, course_name, issued_at").eq("user_id", user.id)
-      ]);
+  { data: profile },
+  { data: coursesData, error: coursesErr },
+  { data: certsData, error: certsErr },
+  { data: progressData }
+] = await Promise.all([
+  supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+  supabase.from("courses").select("id, title, description, slug, sequence_order").order("sequence_order", { ascending: true }),
+  supabase.from("user_certificates").select("id, course_name, issued_at").eq("user_id", user.id),
+  supabase.from("user_lesson_progress").select("lesson_id, completed").eq("user_id", user.id).eq("completed", true)
+]);
 
+// ADD THIS CONSOLE LOG HERE:
+console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
+
+      if (coursesErr) throw coursesErr;
+      if (certsErr) console.error("Certificate fetch error (check RLS policies):", certsErr);
+      
       if (profile) setUserProfile(profile);
-      if (certsData) setCertificates(certsData);
 
-      let l1: CourseData | null = null;
-      let l2: CourseData | null = null;
-      let l3: CourseData | null = null;
+      // Robust certificate mapper handling string column OR foreign key course title
+      if (certsData && certsData.length > 0) {
+        const parsedCertificates = certsData.map((c: any) => {
+          const courseTitle = c.course_name || (c.courses && c.courses.title) || "Course Completion Certificate";
+          return {
+            id: c.id,
+            course_name: courseTitle,
+            issued_at: c.issued_at ? new Date(c.issued_at).toLocaleDateString() : "N/A"
+          };
+        });
+        setCertificates(parsedCertificates);
+      } else {
+        setCertificates([]);
+      }
+
+      // Collect completed lesson IDs directly from user_lesson_progress
+      const completedLessonIds = new Set(
+        progressData?.map((p) => p.lesson_id) || []
+      );
 
       if (coursesData && coursesData.length > 0) {
-        setCourses(coursesData);
-        l1 = coursesData.find((c) => c.slug === "foundational-discipleship") || coursesData[0];
-        l2 = coursesData.find((c) => c.slug === "leadership-discipleship" || c.slug.includes("fundamental")) || null;
-        l3 = coursesData.find((c) => c.slug === "ministry-readiness" || c.slug.includes("ministry")) || null;
-
-        setLevel1Course(l1);
-        setLevel2Course(l2);
-        setLevel3Course(l3);
-
-        // Fetch Level 1 lessons and progress
-        if (l1) {
-          const { data: l1Res } = await supabase
+        // Fetch all lessons in parallel instead of a serial loop
+        const lessonsPromises = coursesData.map(course => 
+          supabase
             .from("lessons")
             .select("id, lesson_number, title, course_id")
-            .eq("course_id", l1.id)
-            .order("lesson_number", { ascending: true });
-          
-          const l1List = l1Res || [];
-          setLevel1Lessons(l1List);
+            .eq("course_id", course.id)
+            .order("lesson_number", { ascending: true })
+        );
 
-          if (l1List.length > 0) {
-            const { data: prog1 } = await supabase
-              .from("user_lesson_progress")
-              .select("*")
-              .eq("user_id", user.id)
-              .in("lesson_id", l1List.map(l => l.id));
+        const lessonsResults = await Promise.all(lessonsPromises);
 
-            if (prog1) {
-              const comp1 = new Set(prog1.filter(p => p.completed || p.is_completed).map(p => p.lesson_id));
-              setLevel1CompletedIds(comp1);
-            }
+        const processedCourses: CourseProgress[] = [];
+        let previousCourseFinished = true; // Level 1 unlocked by default
+
+        coursesData.forEach((course, index) => {
+          const courseLessons = lessonsResults[index].data || [];
+          const mappedLessons: LessonData[] = courseLessons.map((l) => ({
+            id: l.id,
+            lesson_number: l.lesson_number,
+            title: l.title,
+            isCompleted: completedLessonIds.has(l.id)
+          }));
+
+          const completedCount = mappedLessons.filter((l) => l.isCompleted).length;
+          const isCourseFinished = courseLessons.length > 0 && completedCount === courseLessons.length;
+          const isUnlocked = previousCourseFinished;
+
+          processedCourses.push({
+            id: course.id,
+            title: course.title,
+            description: course.description,
+            slug: course.slug,
+            sequenceOrder: course.sequence_order || index + 1,
+            totalLessons: courseLessons.length,
+            completedLessonsCount: completedCount,
+            isCompleted: isCourseFinished,
+            isUnlocked,
+            lessons: mappedLessons
+          });
+
+          previousCourseFinished = isCourseFinished;
+        });
+
+        setCoursesProgress(processedCourses);
+
+        // Keep or dynamically update active focus track
+        setActiveCourse((prevActive) => {
+          if (prevActive) {
+            const updated = processedCourses.find((c) => c.id === prevActive.id);
+            if (updated) return updated;
           }
-        }
-
-        // Fetch Level 2 lessons and progress
-        if (l2) {
-          const { data: l2Res } = await supabase
-            .from("lessons")
-            .select("id, lesson_number, title, course_id")
-            .eq("course_id", l2.id)
-            .order("lesson_number", { ascending: true });
-          
-          const l2List = l2Res || [];
-          setLevel2Lessons(l2List);
-
-          if (l2List.length > 0) {
-            const { data: prog2 } = await supabase
-              .from("user_lesson_progress")
-              .select("*")
-              .eq("user_id", user.id)
-              .in("lesson_id", l2List.map(l => l.id));
-
-            if (prog2) {
-              const comp2 = new Set(prog2.filter(p => p.completed || p.is_completed).map(p => p.lesson_id));
-              setLevel2CompletedIds(comp2);
-            }
-          }
-        }
+          return (
+            processedCourses.find((c) => c.isUnlocked && !c.isCompleted) ||
+            processedCourses[processedCourses.length - 1] ||
+            null
+          );
+        });
       }
 
     } catch (err) {
-      console.error("Error loading dashboard data:", err);
-      setErrorMessage("Unable to sync dashboard data. Please try again.");
+      console.error("Error fetching dynamic student data:", err);
+      setErrorMessage("Unable to sync dashboard data directly from Supabase.");
     } finally {
       setLoading(false);
     }
@@ -211,61 +252,57 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     setMounted(true);
-    const now = new Date();
-    setCurrentTime(now);
+    setCurrentTime(new Date());
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    
     loadStudentData();
 
-    const handleFocus = () => loadStudentData();
-    window.addEventListener("focus", handleFocus);
+    // Listen to real-time changes on user_lesson_progress and user_certificates
+    const channel = supabase
+      .channel("realtime-student-updates")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_lesson_progress" },
+        () => loadStudentData()
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "user_certificates" },
+        () => loadStudentData()
+      )
+      .subscribe();
+
+    const handleSync = () => loadStudentData();
+    window.addEventListener("focus", handleSync);
+    document.addEventListener("visibilitychange", handleSync);
+
     return () => {
       clearInterval(timer);
-      window.removeEventListener("focus", handleFocus);
+      supabase.removeChannel(channel);
+      window.removeEventListener("focus", handleSync);
+      document.removeEventListener("visibilitychange", handleSync);
     };
   }, [loadStudentData]);
 
-  // Determine active level dynamically based on lesson completion counts
-  const activeLevelNumber = useMemo(() => {
-    const l1Finished = level1Lessons.length > 0 && level1CompletedIds.size >= level1Lessons.length;
-    const l2Finished = level2Lessons.length > 0 && level2CompletedIds.size >= level2Lessons.length;
+  // Derived progress stats
+  const activeProgressPercentage = useMemo(() => {
+    if (!activeCourse || activeCourse.totalLessons === 0) return 0;
+    return Math.round((activeCourse.completedLessonsCount / activeCourse.totalLessons) * 100);
+  }, [activeCourse]);
 
-    if (l1Finished && l2Finished) return 3;
-    if (l1Finished) return 2;
-    return 1;
-  }, [level1Lessons, level1CompletedIds, level2Lessons, level2CompletedIds]);
+  // Calendar logic
+  const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Update active course details and roadmap based on active level
-  useEffect(() => {
-    if (activeLevelNumber === 2 && level2Lessons.length > 0) {
-      setActiveLessons(level2Lessons);
-      setCompletedLessonIds(level2CompletedIds);
-    } else if (activeLevelNumber === 1 && level1Lessons.length > 0) {
-      setActiveLessons(level1Lessons);
-      setCompletedLessonIds(level1CompletedIds);
-    } else if (activeLevelNumber === 3 && level3Course) {
-      // Fallback configuration if level 3 content loads
-      setActiveLessons([]);
-      setCompletedLessonIds(new Set());
-    }
-  }, [activeLevelNumber, level1Lessons, level1CompletedIds, level2Lessons, level2CompletedIds, level3Course]);
+  const handlePrevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
+  const handleNextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
+  const handleJumpToToday = () => { const now = new Date(); setCalendarDate(now); setSelectedDate(now); };
 
-  const activeCourseData = useMemo(() => {
-    if (activeLevelNumber === 3) return level3Course;
-    if (activeLevelNumber === 2) return level2Course;
-    return level1Course;
-  }, [activeLevelNumber, level1Course, level2Course, level3Course]);
-
-  const currentStandingText = useMemo(() => {
-    if (activeLevelNumber === 3) return "Level 3: Ministry Readiness Active";
-    if (activeLevelNumber === 2) return "Level 2: Fundamental Active";
-    return "Level 1: In Progress";
-  }, [activeLevelNumber]);
-
-  const totalLessons = activeLessons.length;
-  const completedLessonsCount = completedLessonIds.size;
-  const progressPercentage = totalLessons > 0 ? Math.round((completedLessonsCount / totalLessons) * 100) : 0;
-
-  const handleSelectDate = (date: Date) => setSelectedDate(date);
+  const todayKey = getFormattedKey(currentTime || new Date());
+  const selectedDateEvents = useMemo(() => events.filter((ev) => ev.dateStr === selectedDateKey), [events, selectedDateKey]);
 
   const handleSaveNote = () => {
     const updatedNotes = { ...dateNotes, [selectedDateKey]: currentNote };
@@ -296,27 +333,12 @@ export default function StudentDashboard() {
     window.location.href = "/login/student";
   };
 
-  // Calendar setup
-  const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const year = calendarDate.getFullYear();
-  const month = calendarDate.getMonth();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  const handlePrevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
-  const handleNextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
-  const handleJumpToToday = () => { const now = new Date(); setCalendarDate(now); setSelectedDate(now); };
-
-  const today = currentTime || new Date();
-  const todayKey = getFormattedKey(today);
-  const selectedDateEvents = useMemo(() => events.filter((ev) => ev.dateStr === selectedDateKey), [events, selectedDateKey]);
-
   if (loading || !mounted) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center font-sans">
         <div className="flex items-center space-x-3 text-amber-400">
           <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm font-semibold">Syncing Student Portal...</span>
+          <span className="text-sm font-semibold">Syncing Student Portal directly from database...</span>
         </div>
       </div>
     );
@@ -334,38 +356,63 @@ export default function StudentDashboard() {
           <div className="relative z-10 space-y-2">
             <div className="inline-flex items-center space-x-2 bg-amber-400/10 text-amber-400 text-xs font-bold px-3 py-1 rounded-full border border-amber-400/25">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Level {activeLevelNumber} Unlocked & Active</span>
+              <span>Level {activeCourse?.sequenceOrder || 1} Active</span>
             </div>
             
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              <span>Welcome back, {userProfile?.full_name?.split(" ")[0] || "Student"}! 👋</span>
+              Welcome back, {userProfile?.full_name?.split(" ")[0] || "Student"}! 👋
             </h1>
             
             <p className="text-slate-400 text-sm max-w-xl">
-              Your dashboard has advanced automatically to match your curriculum progression.
+              Your dashboard dynamically updates from your database as you complete lessons.
             </p>
           </div>
 
           <div className="flex items-center space-x-3 shrink-0 relative z-10">
-            <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl">
-              <User className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-medium text-slate-300">{userProfile?.full_name || "Student"}</span>
-            </div>
-            <button onClick={handleSignOut} className="text-slate-400 hover:text-white p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 transition-all" title="Sign Out">
-              <LogOut className="w-4 h-4" />
-            </button>
+            {isAuthenticated ? (
+              <>
+                <div className="flex items-center space-x-2 bg-slate-900/90 border border-slate-800 px-3.5 py-2 rounded-xl">
+                  <User className="w-4 h-4 text-amber-400" />
+                  <span className="text-xs font-medium text-slate-300">{userProfile?.full_name || "Student"}</span>
+                </div>
+                <button onClick={handleSignOut} className="text-slate-400 hover:text-white p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 transition-all" title="Sign Out">
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </>
+            ) : (
+              <Link href="/login/student" className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-4 py-2.5 rounded-xl transition-all">
+                Sign In to View Issued Certificates
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* Dynamic Top Cards */}
+        {!isAuthenticated && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-4 rounded-2xl text-xs font-semibold flex items-center space-x-3">
+            <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
+            <span>
+              You are currently viewing as a guest. Please log in to access your earned certificates and course progress.
+            </span>
+          </div>
+        )}
+
+        {errorMessage && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-xl text-xs font-semibold">
+            {errorMessage}
+          </div>
+        )}
+
+        {/* Top Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-slate-900/60 border border-slate-800 p-5 rounded-2xl backdrop-blur-md flex items-center space-x-4">
             <div className="p-3 bg-amber-400/10 border border-amber-400/20 rounded-xl text-amber-400">
               <BookOpen className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Current Standing</p>
-              <p className="text-sm font-bold text-amber-400">{currentStandingText}</p>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Current Level</p>
+              <p className="text-sm font-bold text-amber-400">
+                {activeCourse ? `Level ${activeCourse.sequenceOrder}: ${activeCourse.title}` : "No Active Course"}
+              </p>
             </div>
           </div>
 
@@ -374,8 +421,8 @@ export default function StudentDashboard() {
               <Clock className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Active Track Progress</p>
-              <p className="text-base font-bold text-white">{progressPercentage}% Completed</p>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Track Progress</p>
+              <p className="text-base font-bold text-white">{activeProgressPercentage}% Completed</p>
             </div>
           </div>
 
@@ -384,24 +431,24 @@ export default function StudentDashboard() {
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Certificates Unlocked</p>
-              <p className="text-base font-bold text-white">{certificates.length}</p>
+              <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Certificates</p>
+              <p className="text-base font-bold text-white">{certificates.length} Earned</p>
             </div>
           </div>
         </div>
 
-        {/* Dashboard Grid Structure */}
+        {/* Main Content Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          {/* Main Active Course Column */}
           <div className="lg:col-span-2 space-y-6">
             
-            {activeCourseData && (
+            {/* Active Track Focus */}
+            {activeCourse && (
               <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-6 shadow-xl">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
                   <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                     <BookOpen className="w-5 h-5 text-amber-400" />
-                    <span>Level {activeLevelNumber}: {activeCourseData.title}</span>
+                    <span>Level {activeCourse.sequenceOrder}: {activeCourse.title}</span>
                   </h2>
                   <span className="text-xs bg-amber-400/10 text-amber-400 font-semibold px-3 py-1 rounded-full border border-amber-400/25">
                     Active Focus
@@ -409,17 +456,17 @@ export default function StudentDashboard() {
                 </div>
 
                 <p className="text-slate-400 text-xs sm:text-sm leading-relaxed">
-                  {activeCourseData.description}
+                  {activeCourse.description}
                 </p>
 
                 {/* Progress Bar */}
                 <div className="space-y-2">
                   <div className="flex justify-between text-xs font-semibold">
                     <span className="text-slate-300">Lessons Completed</span>
-                    <span className="text-amber-400">{completedLessonsCount} of {totalLessons}</span>
+                    <span className="text-amber-400">{activeCourse.completedLessonsCount} of {activeCourse.totalLessons}</span>
                   </div>
                   <div className="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                    <div className="bg-amber-400 h-full rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }} />
+                    <div className="bg-amber-400 h-full rounded-full transition-all duration-500" style={{ width: `${activeProgressPercentage}%` }} />
                   </div>
                 </div>
 
@@ -427,53 +474,123 @@ export default function StudentDashboard() {
                 <div className="space-y-2 pt-2">
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Lessons Roadmap</p>
                   <div className="space-y-2">
-                    {activeLessons.map((lesson) => {
-                      const isCompleted = completedLessonIds.has(lesson.id);
-                      return (
-                        <Link
-                          key={lesson.id}
-                          href={`/courses/${activeCourseData.slug}/lessons/lesson-${lesson.lesson_number}`}
-                          className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all hover:border-slate-600 ${
-                            isCompleted ? "bg-emerald-500/5 border-emerald-500/20" : "bg-slate-950/40 border-slate-800/60"
-                          }`}
-                        >
-                          <div className="flex items-center space-x-3">
-                            {isCompleted ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <Clock className="w-4 h-4 shrink-0 text-slate-500" />}
-                            <span className={isCompleted ? "text-slate-200 font-medium" : "text-slate-400"}>
-                              Lesson {lesson.lesson_number}: {lesson.title}
-                            </span>
-                          </div>
-                          {isCompleted ? (
-                            <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Completed</span>
-                          ) : (
-                            <span className="text-[10px] text-slate-500 font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">Pending</span>
-                          )}
-                        </Link>
-                      );
-                    })}
+                    {activeCourse.lessons.map((lesson) => (
+                      <Link
+                        key={lesson.id}
+                        href={`/courses/${activeCourse.slug}/lessons/lesson-${lesson.lesson_number}`}
+                        className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all hover:border-slate-600 ${
+                          lesson.isCompleted ? "bg-emerald-500/5 border-emerald-500/20" : "bg-slate-950/40 border-slate-800/60"
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          {lesson.isCompleted ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" /> : <Clock className="w-4 h-4 shrink-0 text-slate-500" />}
+                          <span className={lesson.isCompleted ? "text-slate-200 font-medium" : "text-slate-400"}>
+                            Lesson {lesson.lesson_number}: {lesson.title}
+                          </span>
+                        </div>
+                        {lesson.isCompleted ? (
+                          <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Completed</span>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 font-semibold bg-slate-900 px-2 py-0.5 rounded border border-slate-800">Pending</span>
+                        )}
+                      </Link>
+                    ))}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Curriculum Track Summary Links */}
+            {/* Dynamic Curriculum Overview Cards */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-4 shadow-xl">
-              <h3 className="text-base font-bold text-white">Full Curriculum Access & Quick Switch</h3>
-              <p className="text-xs text-slate-400">You can review past levels or jump straight to your curriculum overview anytime.</p>
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Link href="/courses" className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all">
-                  <span>Open Curriculum Hub</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+              <h3 className="text-base font-bold text-white">Curriculum Progression</h3>
+              <div className="space-y-3">
+                {coursesProgress.map((course) => (
+                  <div
+                    key={course.id}
+                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${
+                      course.id === activeCourse?.id
+                        ? "bg-amber-400/10 border-amber-400/40"
+                        : course.isUnlocked
+                        ? "bg-slate-950/60 border-slate-800"
+                        : "bg-slate-950/20 border-slate-900 opacity-60"
+                    }`}
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-amber-400">Level {course.sequenceOrder}</span>
+                        <h4 className="text-sm font-bold text-white">{course.title}</h4>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {course.completedLessonsCount} / {course.totalLessons} Lessons Completed
+                      </p>
+                    </div>
+
+                    <div>
+                      {!course.isUnlocked ? (
+                        <div className="flex items-center space-x-1 text-xs text-slate-500 font-semibold">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Locked</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setActiveCourse(course)}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
+                            course.id === activeCourse?.id
+                              ? "bg-amber-400 text-slate-950"
+                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                          }`}
+                        >
+                          {course.id === activeCourse?.id ? "Viewing" : "Switch View"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
+
+            {/* Issued Certificates */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 backdrop-blur-xl space-y-4 shadow-xl">
+              <div className="flex items-center space-x-3 border-b border-slate-800/80 pb-4">
+                <Award className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Earned Certificates</h3>
+              </div>
+
+              {certificates.length === 0 ? (
+                <p className="text-xs text-slate-400 py-2">
+                  No certificates issued yet. Certificates automatically render once awarded by your instructor upon course completion.
+
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {certificates.map((cert) => (
+                    <div
+                      key={cert.id}
+                      onClick={() => setSelectedCertificate(cert)}
+                      className="bg-slate-950/60 border border-emerald-500/30 hover:border-emerald-400/80 rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all hover:scale-[1.02] group shadow-md"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <Award className="w-4 h-4 text-emerald-400" />
+                          <h4 className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
+                            {cert.course_name}
+                          </h4>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Issued: {cert.issued_at}</p>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-slate-500 group-hover:text-amber-400 shrink-0 ml-2" />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </div>
 
-          {/* Interactive Sidebar Tools */}
+          {/* Sidebar Tools */}
           <div className="space-y-6">
             
-            {/* CALENDAR WIDGET */}
+            {/* CALENDAR */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 text-white font-bold text-sm">
@@ -505,7 +622,7 @@ export default function StudentDashboard() {
                     <button
                       key={dayNum}
                       type="button"
-                      onClick={() => handleSelectDate(iterDate)}
+                      onClick={() => setSelectedDate(iterDate)}
                       className={`h-8 flex flex-col items-center justify-center rounded-xl font-medium transition-all relative ${
                         isSelected ? "bg-amber-400 text-slate-950 font-extrabold shadow-lg z-10" : isToday ? "bg-slate-800 text-amber-400 border border-amber-400/40 font-bold" : "text-slate-300 hover:bg-slate-800"
                       }`}
@@ -517,7 +634,7 @@ export default function StudentDashboard() {
                 })}
               </div>
 
-              {/* Task manager inside calendar */}
+              {/* Task manager */}
               <div className="space-y-2 pt-2 border-t border-slate-800">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   Tasks for {selectedDate.toLocaleDateString("default", { month: "short", day: "numeric" })}
@@ -541,7 +658,7 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* NOTEPAD WIDGET */}
+            {/* NOTEPAD */}
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 backdrop-blur-xl space-y-3 shadow-xl">
               <div className="flex items-center justify-between">
                 <span className="text-white font-bold text-sm">Reflections Note</span>
@@ -561,6 +678,117 @@ export default function StudentDashboard() {
         </div>
 
       </main>
+
+      {/* CERTIFICATE MODAL */}
+      {selectedCertificate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+          
+          {/* Injecting Fonts */}
+          <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;600;700;900&display=swap" />
+
+          {/* Modal Container */}
+          <div className="relative flex flex-col items-center max-w-4xl w-full my-auto">
+            
+            {/* Close Button */}
+            <button 
+              onClick={() => setSelectedCertificate(null)}
+              className="absolute -top-12 right-0 text-slate-300 hover:text-white p-2 bg-white/10 hover:bg-white/25 rounded-full transition-colors z-50 cursor-pointer"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Main Certificate Card - Clean, Elegant Designer Frame */}
+            <div id="certificate-container" className="relative w-full aspect-[1.4] bg-[#FDFBF7] shadow-2xl rounded-sm border-[16px] border-[#0A192F] p-10 sm:p-14 overflow-hidden text-neutral-900 flex flex-col justify-between">
+              
+              {/* Inner Gold Fine Line Border */}
+              <div className="absolute inset-3 border-2 border-[#C5A059]/60 pointer-events-none" />
+
+              {/* Corner Ornaments */}
+              <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-[#C5A059]" />
+              <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-[#C5A059]" />
+              <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-[#C5A059]" />
+              <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-[#C5A059]" />
+
+              {/* Header Section */}
+              <div className="relative z-10 text-center space-y-2 mt-2">
+                <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.3em] text-[#C5A080]" style={{ fontFamily: "'Cinzel', serif" }}>
+                  Ministry of Christ's Great Commission Church Inc.
+                </p>
+                <h1 className="text-4xl sm:text-5xl font-black text-[#0A192F] tracking-wider" style={{ fontFamily: "'Cinzel', serif" }}>
+                  CERTIFICATE OF COMPLETION
+                </h1>
+                <div className="w-32 h-0.5 bg-[#C5A059] mx-auto mt-2" />
+              </div>
+
+              {/* Body Presentation */}
+              <div className="relative z-10 text-center space-y-4 my-auto">
+                <p className="text-xs uppercase tracking-widest text-neutral-500 font-semibold italic">
+                  This proudly certifies that
+                </p>
+
+                {/* Student Name */}
+                <div>
+                  <p style={{ fontFamily: "'Great Vibes', cursive" }} className="text-6xl sm:text-7xl text-[#0A192F] pb-1">
+                    {userProfile?.full_name || "Student Name"}
+                  </p>
+                  <div className="w-64 h-px bg-neutral-300 mx-auto mt-1" />
+                </div>
+
+                {/* Course details */}
+                <div className="space-y-2 max-w-xl mx-auto pt-2">
+                  <p className="text-base sm:text-lg font-bold text-[#C5A059] uppercase tracking-wide" style={{ fontFamily: "'Cinzel', serif" }}>
+                    {selectedCertificate.course_name}
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-neutral-600 leading-relaxed px-4">
+                    Has successfully completed all requirements, coursework, and spiritual milestones. &ldquo;Let the word of Christ dwell in you richly, teaching and admonishing one another in all wisdom.&rdquo; &mdash; Colossians 3:16
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer Section: Signatures, Seal & Badge */}
+              <div className="relative z-10 flex justify-between items-end pt-6 border-t border-neutral-200 mt-2">
+                
+                {/* Date Issued */}
+                <div className="w-40 text-center space-y-1">
+                  <p className="text-[11px] font-bold text-[#0A192F]" style={{ fontFamily: "'Cinzel', serif" }}>{selectedCertificate.issued_at}</p>
+                  <div className="w-full h-px bg-neutral-400" />
+                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Date Issued</p>
+                </div>
+
+                {/* Center Gold Seal / Crest */}
+                <div className="flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-amber-700 p-0.5 shadow-md flex items-center justify-center">
+                    <div className="w-full h-full rounded-full border border-amber-200 flex items-center justify-center bg-gradient-to-b from-amber-300 to-amber-600 text-[#0A192F] font-black text-xs tracking-tighter shadow-inner">
+                      MCGC
+                    </div>
+                  </div>
+                </div>
+
+                {/* Director / Developer Note */}
+                <div className="w-40 text-center space-y-1">
+                  <p className="text-[11px] font-bold text-amber-800 italic" style={{ fontFamily: "'Great Vibes', cursive", fontSize: "16px" }}>Keep growing! 🚀</p>
+                  <div className="w-full h-px bg-neutral-400" />
+                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Authorized Signature</p>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Print Action Button */}
+            <div className="mt-6">
+              <button 
+                onClick={() => window.print()}
+                className="px-8 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold text-xs shadow-xl shadow-amber-500/20 transition-all hover:scale-105 flex items-center space-x-2 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print / Save Certificate</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
