@@ -1,7 +1,55 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from "next/link";
 import Image from "next/image";
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export default function Footer() {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    // Check if app is already running in standalone mode (installed)
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsInstalled(true);
+    }
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    await deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    
+    if (outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setDeferredPrompt(null);
+  };
+
   return (
     <footer className="w-full border-t border-amber-400/10 bg-[#02050e] pt-14 pb-10 px-6 sm:px-10 relative z-10 text-slate-400 text-[11px] font-sans">
       <div className="max-w-6xl mx-auto space-y-10">
@@ -63,6 +111,33 @@ export default function Footer() {
             formation, assessment, and preparation for ministry.
           </p>
         </div>
+
+        {/* =====================================================
+            PWA INSTALL APP BANNER (Auto-hides once installed)
+            ===================================================== */}
+
+        {!isInstalled && deferredPrompt && (
+          <div className="bg-gradient-to-r from-blue-950/40 via-slate-900 to-amber-950/20 border border-amber-400/20 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-1 text-center sm:text-left">
+              <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 mb-1">
+                App Available
+              </span>
+              <h4 className="font-bold text-slate-200 text-xs sm:text-sm tracking-wide">
+                Install MCGC Discipleship Portal
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                Add to your home screen for quick offline access, push updates, and a native app experience.
+              </p>
+            </div>
+            
+            <button
+              onClick={handleInstallClick}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs px-5 py-3 rounded-xl transition-all shadow-lg shadow-amber-400/10 shrink-0 cursor-pointer"
+            >
+              Install Now →
+            </button>
+          </div>
+        )}
 
         {/* =====================================================
             COPYRIGHT & AUTHORSHIP
