@@ -54,25 +54,41 @@ body {
 
 /* --- PRINT / PDF CERTIFICATE STYLING --- */
 @media print {
-  body * {
+  /* Hide everything on the page by default */
+  body, html {
     visibility: hidden;
+    height: 100%;
+    overflow: hidden;
   }
-  
+
+  /* Only show the certificate container and its children */
   #certificate-container, 
   #certificate-container * {
     visibility: visible;
   }
-  
+
+  /* Position the certificate to fill a clean single landscape page */
   #certificate-container {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0;
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+    padding: 1.5rem !important;
     box-shadow: none !important;
-    border: none !important;
-    background: white !important;
+    background: #FDFBF7 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+  }
+
+  /* Force landscape mode instructions for printers */
+  @page {
+    size: A4 landscape;
+    margin: 0;
   }
 }
