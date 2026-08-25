@@ -681,94 +681,94 @@ console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
 
       {/* CERTIFICATE MODAL */}
       {selectedCertificate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
           
           {/* Injecting Fonts */}
           <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cinzel:wght@400;600;700;900&display=swap" />
 
           {/* Modal Container */}
-          <div className="relative flex flex-col items-center max-w-4xl w-full my-auto">
+          <div className="relative flex flex-col items-center max-w-4xl w-full my-auto px-1 sm:px-0">
             
             {/* Close Button */}
             <button 
               onClick={() => setSelectedCertificate(null)}
-              className="absolute -top-12 right-0 text-slate-300 hover:text-white p-2 bg-white/10 hover:bg-white/25 rounded-full transition-colors z-50 cursor-pointer"
+              className="absolute -top-10 sm:-top-12 right-0 text-slate-300 hover:text-white p-2 bg-white/10 hover:bg-white/25 rounded-full transition-colors z-50 cursor-pointer"
             >
               <X className="w-6 h-6" />
             </button>
 
-            {/* Main Certificate Card - Clean, Elegant Designer Frame */}
-            <div id="certificate-container" className="relative w-full aspect-[1.4] bg-[#FDFBF7] shadow-2xl rounded-sm border-[16px] border-[#0A192F] p-10 sm:p-14 overflow-hidden text-neutral-900 flex flex-col justify-between">
+            {/* Main Certificate Card - Fully Responsive for Mobile & Desktop */}
+            <div id="certificate-container" className="relative w-full aspect-[1.4] bg-[#FDFBF7] shadow-2xl rounded-sm border-[8px] sm:border-[16px] border-[#0A192F] p-5 sm:p-14 overflow-hidden text-neutral-900 flex flex-col justify-between">
               
               {/* Inner Gold Fine Line Border */}
-              <div className="absolute inset-3 border-2 border-[#C5A059]/60 pointer-events-none" />
+              <div className="absolute inset-2 sm:inset-3 border border-[#C5A059]/60 sm:border-2 pointer-events-none" />
 
               {/* Corner Ornaments */}
-              <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-[#C5A059]" />
-              <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-[#C5A059]" />
-              <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-[#C5A059]" />
-              <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-[#C5A059]" />
+              <div className="absolute top-3 left-3 sm:top-4 sm:left-4 w-3 h-3 sm:w-4 sm:h-4 border-t-2 border-l-2 border-[#C5A059]" />
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 w-3 h-3 sm:w-4 sm:h-4 border-t-2 border-r-2 border-[#C5A059]" />
+              <div className="absolute bottom-3 left-3 sm:bottom-4 sm:left-4 w-3 h-3 sm:w-4 sm:h-4 border-b-2 border-l-2 border-[#C5A059]" />
+              <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 w-3 h-3 sm:w-4 sm:h-4 border-b-2 border-r-2 border-[#C5A059]" />
 
               {/* Header Section */}
-              <div className="relative z-10 text-center space-y-2 mt-2">
-                <p className="text-xs sm:text-sm font-bold uppercase tracking-[0.3em] text-[#C5A080]" style={{ fontFamily: "'Cinzel', serif" }}>
-                  Ministry of Christ's Great Commission Church Inc.
+              <div className="relative z-10 text-center space-y-1 sm:space-y-2 mt-1 sm:mt-2">
+                <p className="text-[9px] sm:text-sm font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-[#C5A080]" style={{ fontFamily: "'Cinzel', serif" }}>
+                  MCGC Discipleship Academy
                 </p>
-                <h1 className="text-4xl sm:text-5xl font-black text-[#0A192F] tracking-wider" style={{ fontFamily: "'Cinzel', serif" }}>
+                <h1 className="text-2xl sm:text-5xl font-black text-[#0A192F] tracking-wider" style={{ fontFamily: "'Cinzel', serif" }}>
                   CERTIFICATE OF COMPLETION
                 </h1>
-                <div className="w-32 h-0.5 bg-[#C5A059] mx-auto mt-2" />
+                <div className="w-20 sm:w-32 h-0.5 bg-[#C5A059] mx-auto mt-1 sm:mt-2" />
               </div>
 
               {/* Body Presentation */}
-              <div className="relative z-10 text-center space-y-4 my-auto">
-                <p className="text-xs uppercase tracking-widest text-neutral-500 font-semibold italic">
+              <div className="relative z-10 text-center space-y-2 sm:space-y-4 my-auto">
+                <p className="text-[10px] sm:text-xs uppercase tracking-widest text-neutral-500 font-semibold italic">
                   This proudly certifies that
                 </p>
 
                 {/* Student Name */}
                 <div>
-                  <p style={{ fontFamily: "'Great Vibes', cursive" }} className="text-6xl sm:text-7xl text-[#0A192F] pb-1">
+                  <p style={{ fontFamily: "'Great Vibes', cursive" }} className="text-4xl sm:text-7xl text-[#0A192F] pb-0.5 sm:pb-1">
                     {userProfile?.full_name || "Student Name"}
                   </p>
-                  <div className="w-64 h-px bg-neutral-300 mx-auto mt-1" />
+                  <div className="w-40 sm:w-64 h-px bg-neutral-300 mx-auto mt-0.5 sm:mt-1" />
                 </div>
 
                 {/* Course details */}
-                <div className="space-y-2 max-w-xl mx-auto pt-2">
-                  <p className="text-base sm:text-lg font-bold text-[#C5A059] uppercase tracking-wide" style={{ fontFamily: "'Cinzel', serif" }}>
+                <div className="space-y-1 sm:space-y-2 max-w-xl mx-auto pt-1 sm:pt-2">
+                  <p className="text-xs sm:text-lg font-bold text-[#C5A059] uppercase tracking-wide" style={{ fontFamily: "'Cinzel', serif" }}>
                     {selectedCertificate.course_name}
                   </p>
-                  <p className="text-[11px] sm:text-xs text-neutral-600 leading-relaxed px-4">
+                  <p className="text-[9px] sm:text-xs text-neutral-600 leading-tight sm:leading-relaxed px-2 sm:px-4">
                     Has successfully completed all requirements, coursework, and spiritual milestones. &ldquo;Let the word of Christ dwell in you richly, teaching and admonishing one another in all wisdom.&rdquo; &mdash; Colossians 3:16
                   </p>
                 </div>
               </div>
 
               {/* Footer Section: Signatures, Seal & Badge */}
-              <div className="relative z-10 flex justify-between items-end pt-6 border-t border-neutral-200 mt-2">
+              <div className="relative z-10 flex justify-between items-end pt-3 sm:pt-6 border-t border-neutral-200 mt-1 sm:mt-2">
                 
                 {/* Date Issued */}
-                <div className="w-40 text-center space-y-1">
-                  <p className="text-[11px] font-bold text-[#0A192F]" style={{ fontFamily: "'Cinzel', serif" }}>{selectedCertificate.issued_at}</p>
+                <div className="w-28 sm:w-40 text-center space-y-0.5 sm:space-y-1">
+                  <p className="text-[9px] sm:text-11px font-bold text-[#0A192F]" style={{ fontFamily: "'Cinzel', serif" }}>{selectedCertificate.issued_at}</p>
                   <div className="w-full h-px bg-neutral-400" />
-                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Date Issued</p>
+                  <p className="text-[8px] sm:text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Date Issued</p>
                 </div>
 
                 {/* Center Gold Seal / Crest */}
                 <div className="flex flex-col items-center">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-amber-700 p-0.5 shadow-md flex items-center justify-center">
-                    <div className="w-full h-full rounded-full border border-amber-200 flex items-center justify-center bg-gradient-to-b from-amber-300 to-amber-600 text-[#0A192F] font-black text-xs tracking-tighter shadow-inner">
+                  <div className="w-10 h-10 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-amber-700 p-0.5 shadow-md flex items-center justify-center">
+                    <div className="w-full h-full rounded-full border border-amber-200 flex items-center justify-center bg-gradient-to-b from-amber-300 to-amber-600 text-[#0A192F] font-black text-[9px] sm:text-xs tracking-tighter shadow-inner">
                       MCGC
                     </div>
                   </div>
                 </div>
 
                 {/* Director / Developer Note */}
-                <div className="w-40 text-center space-y-1">
-                  <p className="text-[11px] font-bold text-amber-800 italic" style={{ fontFamily: "'Great Vibes', cursive", fontSize: "16px" }}>Keep growing! 🚀</p>
+                <div className="w-28 sm:w-40 text-center space-y-0.5 sm:space-y-1">
+                  <p className="text-[12px] sm:text-[16px] font-bold text-amber-800 italic" style={{ fontFamily: "'Great Vibes', cursive" }}>Keep growing! 🚀</p>
                   <div className="w-full h-px bg-neutral-400" />
-                  <p className="text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Authorized Signature</p>
+                  <p className="text-[8px] sm:text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Authorized Signature</p>
                 </div>
 
               </div>
@@ -776,10 +776,10 @@ console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
             </div>
 
             {/* Print Action Button */}
-            <div className="mt-6">
+            <div className="mt-4 sm:mt-6">
               <button 
                 onClick={() => window.print()}
-                className="px-8 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold text-xs shadow-xl shadow-amber-500/20 transition-all hover:scale-105 flex items-center space-x-2 cursor-pointer"
+                className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-bold text-xs shadow-xl shadow-amber-500/20 transition-all hover:scale-105 flex items-center space-x-2 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print / Save Certificate</span>
