@@ -711,8 +711,8 @@ console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
 
               {/* Header Section */}
               <div className="relative z-10 text-center space-y-1 sm:space-y-2 mt-1 sm:mt-2">
-                <p className="text-[9px] sm:text-sm font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em] text-[#C5A080]" style={{ fontFamily: "'Cinzel', serif" }}>
-                  MCGC Discipleship Academy
+                <p className="text-[8px] sm:text-xs font-bold uppercase tracking-[0.15em] sm:tracking-[0.25em] text-[#C5A080] whitespace-nowrap overflow-hidden text-ellipsis" style={{ fontFamily: "'Cinzel', serif" }}>
+                  Ministry of Christ&apos;s Great Commission Church Inc.
                 </p>
                 <h1 className="text-2xl sm:text-5xl font-black text-[#0A192F] tracking-wider" style={{ fontFamily: "'Cinzel', serif" }}>
                   CERTIFICATE OF COMPLETION
@@ -749,23 +749,33 @@ console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
               <div className="relative z-10 flex justify-between items-end pt-3 sm:pt-6 border-t border-neutral-200 mt-1 sm:mt-2">
                 
                 {/* Date Issued */}
-                <div className="w-28 sm:w-40 text-center space-y-0.5 sm:space-y-1">
-                  <p className="text-[9px] sm:text-11px font-bold text-[#0A192F]" style={{ fontFamily: "'Cinzel', serif" }}>{selectedCertificate.issued_at}</p>
+                <div className="w-24 sm:w-36 text-center space-y-0.5 sm:space-y-1">
+                  <p className="text-[9px] sm:text-[11px] font-bold text-[#0A192F]" style={{ fontFamily: "'Cinzel', serif" }}>{selectedCertificate.issued_at}</p>
                   <div className="w-full h-px bg-neutral-400" />
                   <p className="text-[8px] sm:text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Date Issued</p>
                 </div>
 
-                {/* Center Gold Seal / Crest */}
+                {/* Church Logo Seal */}
+                <div className="w-12 h-12 sm:w-16 sm:h-16 border border-neutral-300 rounded-full flex items-center justify-center p-1 bg-white shadow-sm">
+                  <img 
+                    src="/1080.png" 
+                    alt="Church Logo" 
+                    className="w-full h-full object-contain"
+                    onError={(e)=>{(e.target as HTMLElement).style.display='none'}} 
+                  />
+                </div>
+
+                {/* Center Gold Crest */}
                 <div className="flex flex-col items-center">
-                  <div className="w-10 h-10 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-amber-700 p-0.5 shadow-md flex items-center justify-center">
-                    <div className="w-full h-full rounded-full border border-amber-200 flex items-center justify-center bg-gradient-to-b from-amber-300 to-amber-600 text-[#0A192F] font-black text-[9px] sm:text-xs tracking-tighter shadow-inner">
+                  <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-200 via-amber-400 to-amber-700 p-0.5 shadow-md flex items-center justify-center">
+                    <div className="w-full h-full rounded-full border border-amber-200 flex items-center justify-center bg-gradient-to-b from-amber-300 to-amber-600 text-[#0A192F] font-black text-[8px] sm:text-[10px] tracking-tighter shadow-inner">
                       MCGC
                     </div>
                   </div>
                 </div>
 
                 {/* Director / Developer Note */}
-                <div className="w-28 sm:w-40 text-center space-y-0.5 sm:space-y-1">
+                <div className="w-24 sm:w-36 text-center space-y-0.5 sm:space-y-1">
                   <p className="text-[12px] sm:text-[16px] font-bold text-amber-800 italic" style={{ fontFamily: "'Great Vibes', cursive" }}>Keep growing! 🚀</p>
                   <div className="w-full h-px bg-neutral-400" />
                   <p className="text-[8px] sm:text-[10px] uppercase tracking-wider text-neutral-500 font-semibold">Authorized Signature</p>
