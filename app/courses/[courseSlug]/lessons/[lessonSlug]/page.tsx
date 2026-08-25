@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import ContentProtection from '@/components/ContentProtection';
 import MarkAsStudiedButton from './MarkAsStudiedButton';
+import KeyScripturePills from '@/components/KeyScripturePills';
 
 interface PageProps {
   params: Promise<{
@@ -184,11 +185,7 @@ export default async function LessonPage({ params }: PageProps) {
             {lesson.key_scriptures && Array.isArray(lesson.key_scriptures) && lesson.key_scriptures.length > 0 && (
               <div className="space-y-2 pt-4 border-t border-blue-100">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-full">Key Scriptures</span>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {lesson.key_scriptures.map((scripture: string, index: number) => (
-                    <span key={index} className="inline-flex items-center text-xs font-bold text-slate-800 bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-xl">📖 {scripture}</span>
-                  ))}
-                </div>
+                <KeyScripturePills scriptures={lesson.key_scriptures} />
               </div>
             )}
           </section>

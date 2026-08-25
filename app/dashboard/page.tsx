@@ -22,7 +22,9 @@ import {
   XCircle,
   Edit3,
   RotateCcw,
-  X
+  X,
+  Plus,
+  MapPin
 } from "lucide-react";
 
 interface TeacherProfile {
@@ -55,6 +57,18 @@ interface ExamSubmission {
   submittedAt: string;
 }
 
+// Matches public.calendar_events schema exactly
+interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  event_date: string; // YYYY-MM-DD
+  start_time?: string | null;
+  end_time?: string | null;
+  location?: string | null;
+  created_at?: string;
+}
+
 export default function TeacherDashboard() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
@@ -66,6 +80,18 @@ export default function TeacherDashboard() {
   const [examStudentStatuses, setExamStudentStatuses] = useState<StudentExamStatus[]>([]);
   const [examSubmissions, setExamSubmissions] = useState<ExamSubmission[]>([]);
 
+  // Calendar Events State
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  
+  // Event Form State
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDescription, setEventDescription] = useState("");
+  const [eventStartTime, setEventStartTime] = useState("");
+  const [eventEndTime, setEventEndTime] = useState("");
+  const [eventLocation, setEventLocation] = useState("");
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -74,7 +100,7 @@ export default function TeacherDashboard() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // --- NEW: Grading Modal State ---
+  // Grading Modal State
   const [selectedSubmission, setSelectedSubmission] = useState<ExamSubmission | null>(null);
   const [modalStatus, setModalStatus] = useState<string>("graded");
   const [modalPassed, setModalPassed] = useState<boolean>(true);
@@ -133,6 +159,16 @@ export default function TeacherDashboard() {
           .from("student_exam_submissions")
           .select("id, user_id, course_slug, score, percentage, passed, status, submitted_at")
           .order("submitted_at", { ascending: false });
+
+        // 5. Fetch Calendar Events (Matched exactly to your schema)
+        const { data: eventsData } = await supabase
+          .from("calendar_events")
+          .select("id, title, description, event_date, start_time, end_time, location, created_at")
+          .order("event_date", { ascending: true });
+
+        if (eventsData) {
+          setCalendarEvents(eventsData);
+        }
 
         if (studentsData && coursesData) {
           const statuses: StudentExamStatus[] = [];
@@ -243,14 +279,12 @@ export default function TeacherDashboard() {
     }
   };
 
-  // --- NEW: Open Modal Function ---
   const openGradingModal = (sub: ExamSubmission) => {
     setSelectedSubmission(sub);
     setModalStatus(sub.status);
     setModalPassed(sub.passed);
   };
 
-  // --- NEW: Save Grade/Status Handler ---
   const handleUpdateGradeStatus = async () => {
     if (!selectedSubmission) return;
 
@@ -269,7 +303,6 @@ export default function TeacherDashboard() {
 
       if (error) throw error;
 
-      // Update state locally
       setExamSubmissions((prev) =>
         prev.map((sub) =>
           sub.id === selectedSubmission.id
@@ -288,6 +321,55 @@ export default function TeacherDashboard() {
     }
   };
 
+  // --- Create Calendar Event Handler (Matched 100% to SQL Schema) ---
+  const handleCreateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!eventTitle.trim()) return;
+
+    setIsCreatingEvent(true);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      // Format selected date to YYYY-MM-DD
+      const formattedDate = selectedDate.toISOString().split("T")[0];
+
+      const { data, error } = await supabase
+        .from("calendar_events")
+        .insert([
+          {
+            title: eventTitle,
+            description: eventDescription || null,
+            event_date: formattedDate,
+            start_time: eventStartTime || null,
+            end_time: eventEndTime || null,
+            location: eventLocation || null,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setCalendarEvents((prev) => [...prev, data]);
+      }
+
+      setActionSuccess(`Event "${eventTitle}" created successfully!`);
+      setEventTitle("");
+      setEventDescription("");
+      setEventStartTime("");
+      setEventEndTime("");
+      setEventLocation("");
+      setIsEventModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      setActionError(err.message || "Failed to create event.");
+    } finally {
+      setIsCreatingEvent(false);
+    }
+  };
+
   // Calendar Helpers
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
   const firstDayIndex = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
@@ -301,6 +383,12 @@ export default function TeacherDashboard() {
   const handleNextMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
   };
+
+  // Filter events for selected date
+  const selectedDateStr = selectedDate.toISOString().split("T")[0];
+  const eventsOnSelectedDate = calendarEvents.filter(
+    (event) => event.event_date === selectedDateStr
+  );
 
   if (loading) {
     return (
@@ -572,13 +660,13 @@ export default function TeacherDashboard() {
             )}
           </div>
 
-          {/* Real-time Schedule Calendar */}
+          {/* Real-time Schedule Calendar & Event Manager */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                   <CalendarIcon className="w-5 h-5 text-blue-400" />
-                  <span>Teacher Class Schedule & Calendar</span>
+                  <span>Teacher Class Schedule & Events</span>
                 </h2>
               </div>
 
@@ -623,7 +711,11 @@ export default function TeacherDashboard() {
 
                   {Array.from({ length: daysInMonth }).map((_, i) => {
                     const dayNum = i + 1;
-                    const keyStr = `${year}-${currentMonth.getMonth()}-${dayNum}`;
+                    const dateObj = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum);
+                    
+                    // YYYY-MM-DD
+                    const formattedDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
+
                     const isToday = 
                       dayNum === new Date().getDate() && 
                       currentMonth.getMonth() === new Date().getMonth() && 
@@ -634,10 +726,14 @@ export default function TeacherDashboard() {
                       currentMonth.getMonth() === selectedDate.getMonth() && 
                       currentMonth.getFullYear() === selectedDate.getFullYear();
 
+                    const hasEvent = calendarEvents.some(
+                      (event) => event.event_date === formattedDateStr
+                    );
+
                     return (
                       <button
-                        key={keyStr}
-                        onClick={() => setSelectedDate(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNum))}
+                        key={formattedDateStr}
+                        onClick={() => setSelectedDate(dateObj)}
                         className={`p-2.5 rounded-xl font-medium transition-all text-xs flex flex-col items-center justify-center relative ${
                           isSelected 
                             ? "bg-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-400/20" 
@@ -647,13 +743,20 @@ export default function TeacherDashboard() {
                         }`}
                       >
                         <span>{dayNum}</span>
-                        {isToday && !isSelected && <span className="w-1 h-1 bg-blue-400 rounded-full mt-0.5" />}
+                        
+                        {/* Event Dot Marker */}
+                        {hasEvent && (
+                          <span className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-slate-950" : "bg-amber-400"}`} />
+                        )}
+
+                        {isToday && !isSelected && !hasEvent && <span className="w-1 h-1 bg-blue-400 rounded-full mt-0.5" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
+              {/* Day Details & Event Creation Button */}
               <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between space-y-4">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
@@ -663,21 +766,157 @@ export default function TeacherDashboard() {
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-blue-400">09:00 AM - 11:00 AM</span>
-                        <span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-[10px]">Class</span>
-                      </div>
-                      <p className="text-xs font-bold text-white">Discipleship 101 Session</p>
-                    </div>
+                  {/* Scheduled Events List */}
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {eventsOnSelectedDate.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic p-2">No events scheduled for this date.</p>
+                    ) : (
+                      eventsOnSelectedDate.map((ev) => (
+                        <div key={ev.id} className="p-3 bg-slate-900/80 border border-slate-800 rounded-xl space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-bold text-blue-400">
+                              {ev.start_time ? `${ev.start_time}${ev.end_time ? ` - ${ev.end_time}` : ''}` : "All Day"}
+                            </span>
+                            <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px]">
+                              Event
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-white">{ev.title}</p>
+                          {ev.location && (
+                            <p className="text-[11px] text-slate-400 flex items-center space-x-1">
+                              <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span>{ev.location}</span>
+                            </p>
+                          )}
+                          {ev.description && (
+                            <p className="text-[11px] text-slate-400 line-clamp-2 mt-1">{ev.description}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
+
+                <button
+                  onClick={() => setIsEventModalOpen(true)}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-lg shadow-blue-600/20"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Post Event for Selected Date</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* --- CREATE EVENT MODAL (100% Matched to database fields) --- */}
+      {isEventModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-5 shadow-2xl relative">
+            <button
+              onClick={() => setIsEventModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h3 className="text-lg font-bold text-white">Create New Event</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Posting event for: <span className="text-amber-400 font-semibold">{selectedDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              </p>
+            </div>
+
+            <form onSubmit={handleCreateEvent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Event Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Discipleship Orientation"
+                  value={eventTitle}
+                  onChange={(e) => setEventTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Time Fields */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={eventStartTime}
+                    onChange={(e) => setEventStartTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={eventEndTime}
+                    onChange={(e) => setEventEndTime(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Location Field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Location / Venue
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Main Sanctuary or Zoom Link"
+                  value={eventLocation}
+                  onChange={(e) => setEventLocation(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Description Field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Event Description
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Additional details for students..."
+                  value={eventDescription}
+                  onChange={(e) => setEventDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-3 py-2.5 text-xs font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEventModalOpen(false)}
+                  className="w-1/2 py-2.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingEvent}
+                  className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
+                >
+                  {isCreatingEvent ? "Posting..." : "Post Event"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- GRADING / REVIEW MODAL --- */}
       {selectedSubmission && (
@@ -711,7 +950,6 @@ export default function TeacherDashboard() {
 
             {/* Form Inputs */}
             <div className="space-y-4">
-              {/* Status Select */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                   Submission Status
@@ -728,7 +966,6 @@ export default function TeacherDashboard() {
                 </select>
               </div>
 
-              {/* Passed Switch */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                   Pass Requirement

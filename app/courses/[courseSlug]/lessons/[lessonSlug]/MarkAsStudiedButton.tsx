@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, ArrowRight, Loader2, Award } from "lucide-react";
 
@@ -10,7 +11,7 @@ interface MarkAsStudiedButtonProps {
   courseSlug: string;
   nextLessonSlug?: string | null;
   isLastLesson?: boolean;
-  initialIsStudied?: boolean; // <-- Added to satisfy TypeScript
+  initialIsStudied?: boolean;
 }
 
 export default function MarkAsStudiedButton({
@@ -18,9 +19,10 @@ export default function MarkAsStudiedButton({
   courseSlug,
   nextLessonSlug,
   isLastLesson = false,
-  initialIsStudied = false, // <-- Destructured with default fallback
+  initialIsStudied = false,
 }: MarkAsStudiedButtonProps) {
   const supabase = createClient();
+  const router = useRouter();
   const [isCompleted, setIsCompleted] = useState(initialIsStudied);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,6 +65,7 @@ export default function MarkAsStudiedButton({
 
     const nextState = !isCompleted;
 
+    // Direct UPSERT so database triggers (for admin/teacher counts) execute correctly
     const { error } = await supabase.from("user_lesson_progress").upsert(
       {
         user_id: user.id,
@@ -74,10 +77,12 @@ export default function MarkAsStudiedButton({
     );
 
     if (error) {
-      console.error("Error updating lesson progress:", error.message);
-      alert("Failed to update progress. Please try again.");
+      console.error("Error updating lesson progress details:", error.message);
+      alert(`Failed to update progress: ${error.message}`);
     } else {
       setIsCompleted(nextState);
+      // Refresh current route to sync layout progress indicators and dashboards
+      router.refresh();
     }
     setSaving(false);
   };

@@ -103,7 +103,7 @@ export default function Footer() {
             </p>
 
             <p className="text-slate-400/80 pt-0.5">
-              Scripture quotations: NKJV, © 1982 Thomas Nelson.
+              Scripture quotations are taken from the King James Version (KJV) and the New King James Version (NKJV), © 1982 Thomas Nelson. Used with permission and authorized for ministry distribution. All rights reserved.
             </p>
           </div>
         </div>

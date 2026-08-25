@@ -77,6 +77,15 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    // RESTRICTION 3: Teachers cannot access Courses or Lessons routes
+    if (
+      userRole === "teacher" &&
+      (pathname.startsWith("/courses") || pathname.startsWith("/lessons"))
+    ) {
+      url.pathname = "/dashboard/teacher";
+      return NextResponse.redirect(url);
+    }
+
     // REDIRECT logged-in users away from auth/login pages
     if (pathname.startsWith("/login")) {
       switch (userRole) {

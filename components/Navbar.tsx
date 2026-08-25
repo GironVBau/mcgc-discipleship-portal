@@ -7,6 +7,7 @@ import {
   Menu,
   X,
   ArrowRight,
+  BookOpen,
 } from "lucide-react";
 
 export default function Navbar() {
@@ -48,7 +49,6 @@ export default function Navbar() {
 
           {/* =========================================================
               DESKTOP NAVIGATION
-              Existing application routes are preserved.
           ========================================================= */}
           <nav className="hidden md:flex items-center space-x-7 lg:space-x-8 text-xs sm:text-sm font-medium text-slate-300">
 
@@ -57,6 +57,16 @@ export default function Navbar() {
               className="relative py-2 hover:text-amber-300 transition-colors duration-200 group"
             >
               Home
+              <span className="absolute left-0 right-0 bottom-0 h-px bg-amber-400 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 origin-center" />
+            </Link>
+
+            {/* NEW: BIBLE LINK */}
+            <Link
+              href="/bible"
+              className="relative py-2 text-amber-400 hover:text-amber-300 transition-colors duration-200 group flex items-center gap-1.5 font-semibold"
+            >
+              <BookOpen className="w-4 h-4 text-amber-400" />
+              <span>Bible</span>
               <span className="absolute left-0 right-0 bottom-0 h-px bg-amber-400 scale-x-0 group-hover:scale-x-100 transition-transform duration-200 origin-center" />
             </Link>
 
@@ -137,6 +147,16 @@ export default function Navbar() {
             className="block py-3 px-3 rounded-xl text-sm font-medium text-slate-200 hover:bg-slate-900 hover:text-amber-300 transition-colors"
           >
             Home
+          </Link>
+
+          {/* NEW: MOBILE BIBLE LINK */}
+          <Link
+            href="/bible"
+            onClick={() => setMobileMenuOpen(false)}
+            className="flex items-center gap-2 py-3 px-3 rounded-xl text-sm font-semibold text-amber-400 bg-amber-400/10 border border-amber-400/20 transition-colors"
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Bible</span>
           </Link>
 
           <Link
