@@ -531,16 +531,19 @@ console.log("SUPABASE CERTIFICATES DEBUG:", { certsData, certsErr });
                           <Lock className="w-3.5 h-3.5" />
                           <span>Locked</span>
                         </div>
+                      ) : course.id === activeCourse?.id ? (
+                        <Link
+                          href={`/courses/${course.slug}`}
+                          className="text-xs px-3 py-1.5 rounded-lg font-bold bg-amber-400 text-slate-950 hover:bg-amber-300 transition-all inline-block"
+                        >
+                          Study
+                        </Link>
                       ) : (
                         <button
                           onClick={() => setActiveCourse(course)}
-                          className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
-                            course.id === activeCourse?.id
-                              ? "bg-amber-400 text-slate-950"
-                              : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                          }`}
+                          className="text-xs px-3 py-1.5 rounded-lg font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition-all"
                         >
-                          {course.id === activeCourse?.id ? "Viewing" : "Switch View"}
+                          Switch View
                         </button>
                       )}
                     </div>
