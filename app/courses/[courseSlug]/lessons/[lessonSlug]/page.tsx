@@ -15,7 +15,7 @@ export default async function LessonPage({ params }: PageProps) {
   const { courseSlug, lessonSlug } = await params;
   const supabase = await createClient();
 
-  // 1. Fetch Course first (needed to know the course ID for everything else)
+  // 1. Fetch Course first
   const { data: course, error: courseError } = await supabase
     .from('courses')
     .select('*')
@@ -71,8 +71,8 @@ export default async function LessonPage({ params }: PageProps) {
     );
   }
 
-  // 3. Fetch Next Lesson, User Auth, and Progress concurrently using Promise.all()
-  const [nextLessonResponse, userResponse, progressResponse] = await Promise.all([
+  // 3. Fetch Next Lesson, User Auth, and Progress concurrently
+  const [nextLessonResponse, userResponse] = await Promise.all([
     supabase
       .from('lessons')
       .select('lesson_number')
@@ -81,10 +81,7 @@ export default async function LessonPage({ params }: PageProps) {
       .order('lesson_number', { ascending: true })
       .limit(1)
       .maybeSingle(),
-    supabase.auth.getUser(),
-    // We can fetch user progress right away if we get user context, but auth must resolve first.
-    // To handle auth safely inside Promise.all, we fetch session first or query progress conditionally.
-    Promise.resolve(null) // placeholder or let's handle progress right after user resolves
+    supabase.auth.getUser()
   ]);
 
   const nextLesson = nextLessonResponse.data;
