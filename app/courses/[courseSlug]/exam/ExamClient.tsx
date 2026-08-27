@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { submitFRAExam } from '@/app/actions/submit-exam';
+import DOMPurify from 'isomorphic-dompurify';
 
 const EXAM_DURATION_SECONDS = 90 * 60;
 
@@ -39,12 +40,15 @@ const ExamClient = ({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Sync ref to avoid closure lock in timer callback
+  const isSubmittingRef = useRef(false);
   const answersRef = useRef(answers);
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadQuestions() {
       const { data: questionData, error } = await supabase
         .from('exam_questions')
@@ -52,38 +56,29 @@ const ExamClient = ({
         .eq('course_slug', courseSlug)
         .order('question_number', { ascending: true });
 
-      if (error) console.error('Error loading questions:', error);
-      else if (questionData) setQuestions(questionData as QuestionItem[]);
-      setLoading(false);
+      if (error) {
+        console.error('Error loading questions:', error);
+      } else if (questionData && isMounted) {
+        setQuestions(questionData as QuestionItem[]);
+      }
+      if (isMounted) setLoading(false);
     }
     loadQuestions();
+
+    return () => {
+      isMounted = false;
+    };
   }, [supabase, courseSlug]);
 
-  useEffect(() => {
-    if (loading) return;
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          if (!isSubmitting) executeSubmission(answersRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [loading, isSubmitting]);
-
-  const handleInputChange = (qNum: number | string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [String(qNum)]: value }));
-  };
-
-  const executeSubmission = async (answersToSubmit: Record<string, string>) => {
-    if (isSubmitting) return;
+  const executeSubmission = useCallback(async (answersToSubmit: Record<string, string>) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
-    
+
     try {
-      const essayQuestions = questions.filter((q) => q.part_title.toUpperCase().includes('ESSAY'));
+      const essayQuestions = questions.filter((q) =>
+        q.part_title.toUpperCase().includes('ESSAY')
+      );
       let mainEssay = '';
       for (const eq of essayQuestions) {
         const val = answersToSubmit[String(eq.question_number)];
@@ -92,20 +87,46 @@ const ExamClient = ({
           break;
         }
       }
-      const finalPayload = { ...answersToSubmit, essay: mainEssay || answersToSubmit['essay'] || '' };
-      
+      const finalPayload = {
+        ...answersToSubmit,
+        essay: mainEssay || answersToSubmit['essay'] || '',
+      };
+
       const res = await submitFRAExam(finalPayload, courseSlug);
 
       if (res && res.success && res.redirectUrl) {
         window.location.href = res.redirectUrl;
       } else {
         alert("Submission Failed: " + (res?.error || "Unknown error from server"));
+        isSubmittingRef.current = false;
         setIsSubmitting(false);
       }
     } catch (err: any) {
       alert(`Critical Error: ${err?.message || err}`);
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
+  }, [questions, courseSlug]);
+
+  useEffect(() => {
+    if (loading) return;
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          if (!isSubmittingRef.current) {
+            executeSubmission(answersRef.current);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [loading, executeSubmission]);
+
+  const handleInputChange = (qNum: number | string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [String(qNum)]: value }));
   };
 
   const formatTime = (seconds: number) => {
@@ -113,6 +134,14 @@ const ExamClient = ({
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center text-white font-sans">
+        <p className="animate-pulse">Loading exam questions...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] font-sans pb-20">
@@ -144,7 +173,12 @@ const ExamClient = ({
 
               <div className="text-sm font-semibold flex items-start gap-1.5">
                 <span>{q.question_number}.</span>
-                <span className="leading-relaxed" dangerouslySetInnerHTML={{ __html: q.question_text }} />
+                <span
+                  className="leading-relaxed"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(q.question_text),
+                  }}
+                />
               </div>
 
               {isTwoStatement && (
@@ -263,7 +297,7 @@ const ExamClient = ({
             executeSubmission(answers);
           }}
           disabled={isSubmitting}
-          className="w-full bg-amber-400 text-slate-950 font-extrabold py-4 rounded-2xl transition-all hover:bg-amber-300 disabled:opacity-50"
+          className="w-full bg-amber-400 text-slate-950 font-extrabold py-4 rounded-2xl transition-all hover:bg-amber-300 disabled:opacity-50 cursor-pointer"
         >
           {isSubmitting ? 'Submitting Assessment...' : 'Submit Assessment'}
         </button>
@@ -273,5 +307,3 @@ const ExamClient = ({
 };
 
 export default ExamClient;
-
-export const dynamic = "force-dynamic";

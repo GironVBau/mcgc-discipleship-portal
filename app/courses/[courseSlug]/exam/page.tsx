@@ -33,21 +33,24 @@ export default async function ExamPage({ params }: PageProps) {
   }
 
   // 1. CHECK LESSON COMPLETION FIRST
-  const { data: lessons } = await supabase
+  const { count: totalLessons } = await supabase
     .from("lessons")
-    .select("id")
+    .select("id", { count: "exact", head: true })
     .eq("course_id", course.id);
 
-  const lessonIds = lessons?.map((l) => l.id) || [];
-  const { data: progress } = await supabase
-    .from("user_lesson_progress")
-    .select("lesson_id")
-    .eq("user_id", user.id)
-    .eq("completed", true)
-    .in("lesson_id", lessonIds);
+  const { count: completedCount } = await supabase
+    .from("lessons")
+    .select("id, user_lesson_progress!inner(completed)", {
+      count: "exact",
+      head: true,
+    })
+    .eq("course_id", course.id)
+    .eq("user_lesson_progress.user_id", user.id)
+    .eq("user_lesson_progress.completed", true);
 
-  const completedCount = progress?.length || 0;
-  const isAllLessonsCompleted = lessonIds.length > 0 && completedCount === lessonIds.length;
+  const total = totalLessons ?? 0;
+  const completed = completedCount ?? 0;
+  const isAllLessonsCompleted = total > 0 && completed === total;
 
   if (!isAllLessonsCompleted) {
     return (
@@ -74,20 +77,21 @@ export default async function ExamPage({ params }: PageProps) {
     );
   }
 
-  // 2. CHECK SUBMISSION: If they already submitted, redirect them to the success page!
-  // This acts as the permanent lock so they cannot retake it.
-  const { data: existingSubmission } = await supabase
-    .from("student_exam_submissions") 
-    .select("id")
+  // 2. CHECK SUBMISSIONS & RETAKE PERMISSIONS
+  const { data: latestSubmission } = await supabase
+    .from("student_exam_submissions")
+    .select("id, attempt_number, retake_granted")
     .eq("user_id", user.id)
     .eq("course_id", course.id)
+    .order("attempt_number", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (existingSubmission) {
+  if (latestSubmission && !latestSubmission.retake_granted) {
     redirect(`/courses/${courseSlug}/exam/success`);
   }
 
-  // 3. Check Exam Approval Row (Only checked if they haven't submitted yet)
+  // 3. CHECK EXAM APPROVAL ROW
   let { data: approval } = await supabase
     .from("exam_approvals")
     .select("is_approved")
@@ -104,7 +108,7 @@ export default async function ExamPage({ params }: PageProps) {
     approval = { is_approved: false };
   }
 
-  // 4. Pending teacher approval screen
+  // 4. PENDING TEACHER APPROVAL SCREEN
   if (!approval?.is_approved) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6 font-sans">

@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Search,
   CheckSquare,
+  RotateCcw,
 } from "lucide-react";
 
 interface TeacherProfile {
@@ -42,6 +43,22 @@ interface StudentExamStatus {
   completedLessons: number;
   totalLessons: number;
   isApproved: boolean;
+}
+
+interface ExamSubmissionRecord {
+  id: string;
+  userId: string;
+  studentName: string;
+  courseId: string;
+  courseTitle: string;
+  courseSlug: string;
+  score: number | null;
+  percentage: number | null;
+  passed: boolean;
+  status: string;
+  attemptNumber: number;
+  retakeGranted: boolean;
+  submittedAt: string;
 }
 
 interface EssaySubmission {
@@ -81,7 +98,7 @@ export default function TeacherDashboard() {
   const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
 
-  // Navigation tab state: 'all' | 'students' | 'exams' | 'essays' | 'certificates'
+  // Navigation tab state: 'all' | 'students' | 'exams' | 'retakes' | 'essays' | 'certificates'
   const [activeTab, setActiveTab] = useState<string>("all");
 
   const [teacherProfile, setTeacherProfile] =
@@ -93,6 +110,10 @@ export default function TeacherDashboard() {
 
   const [examStudentStatuses, setExamStudentStatuses] = useState<
     StudentExamStatus[]
+  >([]);
+
+  const [examSubmissions, setExamSubmissions] = useState<
+    ExamSubmissionRecord[]
   >([]);
 
   const [essaySubmissions, setEssaySubmissions] = useState<EssaySubmission[]>(
@@ -120,6 +141,7 @@ export default function TeacherDashboard() {
   const [modalFeedback, setModalFeedback] = useState<string>("");
   const [isUpdatingEssay, setIsUpdatingEssay] = useState(false);
   const [isIssuingCert, setIsIssuingCert] = useState<string | null>(null);
+  const [isGrantingRetake, setIsGrantingRetake] = useState<string | null>(null);
 
   /*
    * Helper function to format display names as Surname, First Name
@@ -202,7 +224,7 @@ export default function TeacherDashboard() {
         setStudentCount(students ?? 0);
 
         /*
-         * Fetch students ordered alphabetically by surname first using database ordering
+         * Fetch students ordered alphabetically by surname first
          */
         const { data: studentsData } = await supabase
           .from("profiles")
@@ -243,7 +265,15 @@ export default function TeacherDashboard() {
           .select("user_id, course_id, is_approved");
 
         /*
-         * Fetch essay submissions from user_essay_submissions table
+         * Fetch Exam Submissions for grading & retakes
+         */
+        const { data: examSubData } = await supabase
+          .from("student_exam_submissions")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        /*
+         * Fetch essay submissions
          */
         const { data: essaysData } = await supabase
           .from("user_essay_submissions")
@@ -319,6 +349,40 @@ export default function TeacherDashboard() {
           });
 
           setExamStudentStatuses(statuses);
+        }
+
+        /*
+         * Format Exam Submissions
+         */
+        if (examSubData && studentsData && coursesData) {
+          const formattedSubmissions: ExamSubmissionRecord[] = examSubData.map((sub) => {
+            const student = studentsData.find((s) => s.id === sub.user_id);
+            const course = coursesData.find((c) => c.id === sub.course_id);
+
+            return {
+              id: sub.id,
+              userId: sub.user_id,
+              studentName: formatStudentName(
+                student?.surname,
+                student?.first_name,
+                student?.full_name || student?.email
+              ),
+              courseId: sub.course_id,
+              courseTitle: course?.title || "Exam Course",
+              courseSlug: course?.slug || "foundational-discipleship",
+              score: sub.score,
+              percentage: sub.percentage,
+              passed: sub.passed,
+              status: sub.status || "graded",
+              attemptNumber: sub.attempt_number || 1,
+              retakeGranted: sub.retake_granted || false,
+              submittedAt: sub.created_at
+                ? new Date(sub.created_at).toLocaleDateString()
+                : "N/A",
+            };
+          });
+
+          setExamSubmissions(formattedSubmissions);
         }
 
         /*
@@ -471,6 +535,37 @@ export default function TeacherDashboard() {
   };
 
   /*
+   * Teacher approves Exam Retake
+   */
+  const handleApproveRetake = async (submissionId: string) => {
+    setIsGrantingRetake(submissionId);
+    setActionError(null);
+    setActionSuccess(null);
+
+    try {
+      const { error } = await supabase
+        .from("student_exam_submissions")
+        .update({ retake_granted: true })
+        .eq("id", submissionId);
+
+      if (error) throw error;
+
+      setExamSubmissions((prev) =>
+        prev.map((sub) =>
+          sub.id === submissionId ? { ...sub, retakeGranted: true } : sub
+        )
+      );
+
+      setActionSuccess("Exam retake successfully granted to the student.");
+    } catch (error: any) {
+      console.error("Error approving retake:", error);
+      setActionError(error.message || "Failed to approve exam retake.");
+    } finally {
+      setIsGrantingRetake(null);
+    }
+  };
+
+  /*
    * Handle Certificate Issuance Action
    */
   const handleIssueCertificate = async (
@@ -479,11 +574,7 @@ export default function TeacherDashboard() {
     recordId: string,
     courseTitle?: string
   ) => {
-    console.log("1. Button clicked!");
-    console.log("2. Params received:", { userId, courseId, recordId, courseTitle });
-
     if (!userId || !courseId) {
-      console.error("ERROR: userId or courseId is missing!");
       setActionError("Cannot issue certificate: Missing user or course identifier.");
       return;
     }
@@ -494,7 +585,6 @@ export default function TeacherDashboard() {
 
     try {
       const now = new Date().toISOString();
-      console.log("3. Sending upsert request to user_certificates...");
 
       const { data, error } = await supabase
         .from("user_certificates")
@@ -511,12 +601,7 @@ export default function TeacherDashboard() {
         )
         .select();
 
-      if (error) {
-        console.error("4. Supabase returned error:", error);
-        throw error;
-      }
-
-      console.log("5. Success! Returned data:", data);
+      if (error) throw error;
 
       const formattedToday = new Date(now).toLocaleDateString();
 
@@ -638,6 +723,20 @@ export default function TeacherDashboard() {
         s.courseTitle.toLowerCase().includes(query)
     );
   }, [examStudentStatuses, studentSearchQuery, activeTab]);
+
+  const filteredExamSubmissions = useMemo(() => {
+    let list = examSubmissions;
+    if (activeTab === "retakes") {
+      list = list.filter((e) => !e.passed);
+    }
+    if (!studentSearchQuery.trim()) return list;
+    const query = studentSearchQuery.toLowerCase();
+    return list.filter(
+      (e) =>
+        e.studentName.toLowerCase().includes(query) ||
+        e.courseTitle.toLowerCase().includes(query)
+    );
+  }, [examSubmissions, studentSearchQuery, activeTab]);
 
   const filteredEssaySubmissions = useMemo(() => {
     let list = essaySubmissions;
@@ -764,7 +863,7 @@ export default function TeacherDashboard() {
               </p>
 
               <p className="text-xs text-slate-500 mt-2">
-                Teaching, exam approval, student assessment, and certificates
+                Teaching, exam approval, retake authorization, student assessment, and certificates
               </p>
             </div>
 
@@ -807,7 +906,7 @@ export default function TeacherDashboard() {
           </div>
 
           {/* Interactive Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-5 mt-8">
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === "students" ? "all" : "students")}
@@ -827,6 +926,23 @@ export default function TeacherDashboard() {
 
             <button
               type="button"
+              onClick={() => setActiveTab(activeTab === "retakes" ? "all" : "retakes")}
+              className={`text-left p-5 rounded-2xl border transition ${
+                activeTab === "retakes"
+                  ? "bg-purple-600/20 border-purple-500 ring-2 ring-purple-500/40"
+                  : "bg-slate-900/60 border-slate-800 hover:border-slate-700"
+              }`}
+            >
+              <p className="text-xs font-semibold uppercase text-slate-400">
+                Exam Retake Requests
+              </p>
+              <p className="text-3xl font-black text-purple-400 mt-1">
+                {examSubmissions.filter((s) => !s.passed && !s.retakeGranted).length}
+              </p>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab(activeTab === "essays" ? "all" : "essays")}
               className={`text-left p-5 rounded-2xl border transition ${
                 activeTab === "essays"
@@ -835,7 +951,7 @@ export default function TeacherDashboard() {
               }`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
-                Pending Essays to Review
+                Pending Essays
               </p>
               <p className="text-3xl font-black text-amber-400 mt-1">
                 {
@@ -856,7 +972,7 @@ export default function TeacherDashboard() {
               }`}
             >
               <p className="text-xs font-semibold uppercase text-slate-400">
-                Pending Exam Approval
+                Pending Initial Access
               </p>
               <p className="text-3xl font-black text-emerald-400 mt-1">
                 {
@@ -897,7 +1013,17 @@ export default function TeacherDashboard() {
                   : "text-slate-400 hover:bg-slate-900 hover:text-white"
               }`}
             >
-              2. Pending Exam Approval
+              2. Initial Exam Access
+            </button>
+            <button
+              onClick={() => setActiveTab("retakes")}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition ${
+                activeTab === "retakes"
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-400 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              3. Exam Retake Approvals
             </button>
             <button
               onClick={() => setActiveTab("essays")}
@@ -907,7 +1033,7 @@ export default function TeacherDashboard() {
                   : "text-slate-400 hover:bg-slate-900 hover:text-white"
               }`}
             >
-              3. Essay Review
+              4. Essay Review
             </button>
             <button
               onClick={() => setActiveTab("certificates")}
@@ -917,7 +1043,7 @@ export default function TeacherDashboard() {
                   : "text-slate-400 hover:bg-slate-900 hover:text-white"
               }`}
             >
-              4. Certificate Issuance
+              5. Certificate Issuance
             </button>
           </div>
 
@@ -978,14 +1104,14 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* SECTION 2: Student Exam Approvals Card */}
+          {/* SECTION 2: Initial Exam Approvals Card */}
           {(activeTab === "all" || activeTab === "exams") && (
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 mt-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <FileCheck className="w-5 h-5 text-amber-400" />
                   <h2 className="text-lg font-bold text-white">
-                    2. Pending Exam Approvals
+                    2. Initial Exam Approvals
                   </h2>
                 </div>
                 <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1 rounded-full">
@@ -1079,13 +1205,100 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* SECTION 3: Student Essay & Answer Review Card */}
+          {/* SECTION 3: Exam Retake Approvals */}
+          {(activeTab === "all" || activeTab === "retakes") && (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 mt-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-purple-400" />
+                  <h2 className="text-lg font-bold text-white">
+                    3. Exam Retake Approvals
+                  </h2>
+                </div>
+                <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1 rounded-full">
+                  Permission Gate
+                </span>
+              </div>
+
+              {filteredExamSubmissions.length === 0 ? (
+                <div className="p-8 text-center bg-slate-950/40 border border-slate-800 rounded-2xl">
+                  <p className="text-xs text-slate-400">
+                    No student exam submissions recorded yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {filteredExamSubmissions.map((sub) => (
+                    <div
+                      key={sub.id}
+                      className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold text-white">
+                            {sub.studentName}
+                          </p>
+                          <span className="text-[10px] bg-slate-800 text-slate-300 font-semibold px-2 py-0.5 rounded">
+                            Attempt #{sub.attemptNumber}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Course:{" "}
+                          <span className="text-slate-200 font-medium">
+                            {sub.courseTitle}
+                          </span>{" "}
+                          • Submitted: {sub.submittedAt}
+                        </p>
+                        <p className="text-xs mt-1">
+                          Score:{" "}
+                          <span className="font-bold text-white">
+                            {sub.score ?? 0} pts ({sub.percentage ?? 0}%)
+                          </span>{" "}
+                          —{" "}
+                          {sub.passed ? (
+                            <span className="text-emerald-400 font-bold">Passed</span>
+                          ) : (
+                            <span className="text-rose-400 font-bold">Failed / Needs Retake</span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {sub.passed ? (
+                          <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4" /> Passed
+                          </span>
+                        ) : sub.retakeGranted ? (
+                          <span className="text-xs text-purple-400 bg-purple-500/10 border border-purple-500/30 px-3 py-2 rounded-xl font-bold flex items-center gap-1.5">
+                            <RotateCcw className="w-4 h-4" /> Retake Granted
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleApproveRetake(sub.id)}
+                            disabled={isGrantingRetake === sub.id}
+                            className="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition disabled:opacity-50"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            {isGrantingRetake === sub.id
+                              ? "Granting..."
+                              : "Approve Retake"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SECTION 4: Student Essay & Answer Review Card */}
           {(activeTab === "all" || activeTab === "essays") && (
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 mt-8">
               <div className="flex items-center gap-2 mb-4">
                 <BookOpenCheck className="w-5 h-5 text-blue-400" />
                 <h2 className="text-lg font-bold text-white">
-                  3. Essay Review
+                  4. Essay Review
                 </h2>
               </div>
 
@@ -1156,14 +1369,14 @@ export default function TeacherDashboard() {
             </div>
           )}
 
-          {/* SECTION 4: Student Certificate Issuance Card */}
+          {/* SECTION 5: Student Certificate Issuance Card */}
           {(activeTab === "all" || activeTab === "certificates") && (
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 mt-8">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Award className="w-5 h-5 text-emerald-400" />
                   <h2 className="text-lg font-bold text-white">
-                    4. Student Certificate Issuance
+                    5. Student Certificate Issuance
                   </h2>
                 </div>
                 <span className="text-xs font-bold text-slate-400 bg-slate-800 px-3 py-1 rounded-full">

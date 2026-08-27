@@ -32,7 +32,7 @@ export default async function ExamSuccessPage({ params }: SuccessPageProps) {
     redirect("/courses");
   }
 
-  // Fetch the latest submission safely using order and maybeSingle to prevent .single() crashes
+  // Fetch the latest submission safely using order and maybeSingle to prevent crashes
   const { data: submission } = await supabase
     .from("student_exam_submissions")
     .select("score, percentage, passed, submitted_at, answers")

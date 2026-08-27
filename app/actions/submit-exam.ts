@@ -9,14 +9,17 @@ export async function submitFRAExam(
 ) {
   try {
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
     if (authError || !user) {
       console.error('Submit Error: User not authenticated', authError);
       return { success: false, error: 'User is not authenticated.' };
     }
 
-    // Fetch course ID and title using the slug
+    // 1. Fetch course details
     const { data: course, error: courseError } = await supabase
       .from('courses')
       .select('id, title')
@@ -30,34 +33,57 @@ export async function submitFRAExam(
 
     const targetUrl = `/courses/${courseSlug}/exam/success`;
 
-    // Prevent duplicate active submissions
-    const { data: existingSub } = await supabase
+    // 2. Fetch latest submission to determine retake eligibility and attempt number
+    const { data: latestSubmission } = await supabase
       .from('student_exam_submissions')
-      .select('id')
+      .select('id, attempt_number, retake_granted')
       .eq('user_id', user.id)
       .eq('course_id', course.id)
+      .order('attempt_number', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (existingSub) {
-      return { success: true, redirectUrl: targetUrl };
+    let nextAttemptNumber = 1;
+
+    if (latestSubmission) {
+      if (!latestSubmission.retake_granted) {
+        return {
+          success: false,
+          error:
+            'You have already submitted this exam. A teacher must approve a retake before you can submit again.',
+        };
+      }
+      nextAttemptNumber = (latestSubmission.attempt_number || 1) + 1;
     }
 
-    // Fetch exam questions for grading
+    // 3. Fetch questions for dynamic objective grading
     const { data: questions } = await supabase
       .from('exam_questions')
-      .select('question_number, correct_answer, points')
+      .select('question_number, part_title, correct_answer, points')
       .eq('course_slug', courseSlug);
 
     let totalScore = 0;
-    let totalPossiblePoints = 0;
+    let totalPossibleObjectivePoints = 0;
+    let essayText = studentAnswers['essay'] || '';
 
     if (questions) {
       questions.forEach((q) => {
-        if (q.correct_answer !== null) {
+        const qNumStr = String(q.question_number);
+
+        // Check if question is an essay/reflection and extract answer dynamically
+        const isEssay = q.part_title?.toUpperCase().includes('ESSAY');
+        if (isEssay && studentAnswers[qNumStr]) {
+          essayText = studentAnswers[qNumStr];
+        }
+
+        // Grade objective questions only
+        if (q.correct_answer !== null && q.correct_answer !== undefined) {
           const points = q.points ?? 1;
-          totalPossiblePoints += points;
-          const studentAns = studentAnswers[String(q.question_number)]?.trim().toLowerCase();
+          totalPossibleObjectivePoints += points;
+
+          const studentAns = studentAnswers[qNumStr]?.trim().toLowerCase();
           const correctAns = q.correct_answer.trim().toLowerCase();
+
           if (studentAns && studentAns === correctAns) {
             totalScore += points;
           }
@@ -65,11 +91,14 @@ export async function submitFRAExam(
       });
     }
 
-    const percentage = totalPossiblePoints > 0 ? Number(((totalScore / totalPossiblePoints) * 100).toFixed(2)) : 0;
+    const percentage =
+      totalPossibleObjectivePoints > 0
+        ? Number(((totalScore / totalPossibleObjectivePoints) * 100).toFixed(2))
+        : 0;
+    
     const passed = percentage >= 85;
-    const essayText = studentAnswers['essay'] || studentAnswers['6'] || '';
 
-    // Insert into student_exam_submissions matching your database schema
+    // 4. Save Submission
     const { data: examSub, error: subError } = await supabase
       .from('student_exam_submissions')
       .insert({
@@ -80,6 +109,8 @@ export async function submitFRAExam(
         percentage: percentage,
         passed: passed,
         status: essayText ? 'pending_essay_review' : 'graded',
+        attempt_number: nextAttemptNumber,
+        retake_granted: false, // Reset retake flag on submission
       })
       .select('id')
       .single();
@@ -89,11 +120,9 @@ export async function submitFRAExam(
       return { success: false, error: `Database Error: ${subError.message}` };
     }
 
-    // --- AUTOMATIC CERTIFICATE ISSUANCE ---
-    // If they passed the exam, automatically award their certificate
+    // 5. Issue Certificate automatically if passed
     if (passed) {
       try {
-        // Check if certificate already exists to avoid duplicates
         const { data: existingCert } = await supabase
           .from('user_certificates')
           .select('id')
@@ -113,7 +142,7 @@ export async function submitFRAExam(
       }
     }
 
-    // Optional essay log insertion wrapped in a safe try/catch block
+    // 6. Record essay log entry if essay text is provided
     if (essayText) {
       try {
         await supabase.from('user_essay_submissions').insert({
@@ -126,8 +155,8 @@ export async function submitFRAExam(
           status: 'pending',
           submitted_at: new Date().toISOString(),
         });
-      } catch (e) {
-        // Safe fallback if table structure differs
+      } catch (essayErr) {
+        console.error('Non-blocking error logging essay:', essayErr);
       }
     }
 
