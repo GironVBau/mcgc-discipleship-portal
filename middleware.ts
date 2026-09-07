@@ -2,10 +2,24 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // 1. PUBLIC ROUTES IDENTIFICATION
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/enroll") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/api/public");
+
+  // Create initial response
   let response = NextResponse.next({
-    request: { headers: request.headers },
+    request: {
+      headers: request.headers,
+    },
   });
 
+  // Initialize Supabase Client with standard Next.js Cookie handling
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -18,40 +32,43 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          // Update response cookies directly without re-instantiating response
+          response = NextResponse.next({
+            request,
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            response.cookies.set(name, value, {
+              ...options,
+              // Fixes Safari SameSite cookie restrictions in WebKit/Messenger
+              sameSite: "lax",
+              secure: process.env.NODE_ENV === "production",
+            })
           );
         },
       },
     }
   );
 
-  // Retrieve current user session
+  // 2. OPTIMIZATION: On public routes, do NOT block rendering with a network auth call
+  // If the user visits / or /login, allow instant rendering
+  if (isPublicRoute && !pathname.startsWith("/login")) {
+    return response;
+  }
+
+  // Retrieve current user session only for protected routes or login redirection
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const url = request.nextUrl.clone();
-  const pathname = url.pathname;
 
-  // 1. PUBLIC ROUTES
-  const isPublicRoute =
-    pathname === "/" ||
-    pathname.startsWith("/login") ||
-    pathname.startsWith("/enroll") ||
-    pathname.startsWith("/auth") ||
-    pathname.startsWith("/_next") ||
-    pathname.includes("."); // Static assets
-
-  // 2. UNAUTHENTICATED USER PROTECTION
+  // 3. UNAUTHENTICATED USER PROTECTION
   if (!user && !isPublicRoute) {
     url.pathname = "/login/student";
     url.searchParams.set("redirectTo", pathname);
     return NextResponse.redirect(url);
   }
 
-  // 3. ROLE-BASED ACCESS CONTROL
+  // 4. ROLE-BASED ACCESS CONTROL FOR AUTHENTICATED USERS
   if (user) {
     const userRole = user.user_metadata?.role || "student";
 
@@ -67,7 +84,6 @@ export async function middleware(request: NextRequest) {
     }
 
     // RESTRICTION 2: Teachers cannot access Admin routes
-    // (Note: Admins are NOT restricted from /dashboard/teacher!)
     if (
       userRole === "teacher" &&
       (pathname.startsWith("/dashboard/admin") ||
@@ -109,6 +125,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public files with extensions (svg, png, jpg, jpeg, gif, webp, ico)
+     */
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
   ],
 };

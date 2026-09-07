@@ -29,8 +29,11 @@ const supabase = createClient();
 function PhilippineClock() {
   const [timeString, setTimeString] = useState<string>("");
   const [dateString, setDateString] = useState<string>("");
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+
     const updateTime = () => {
       const now = new Date();
 
@@ -60,6 +63,12 @@ function PhilippineClock() {
 
     return () => clearInterval(interval);
   }, []);
+
+  if (!mounted) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center mt-7 space-y-2 font-sans h-[50px]" />
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center text-center mt-7 space-y-2 font-sans">
@@ -118,16 +127,22 @@ export default function Home() {
   const [loadingAssessments, setLoadingAssessments] = useState(true);
 
   /* =======================================================
-     FETCH ANNOUNCEMENTS
+     FETCH ANNOUNCEMENTS (WITH TIMEOUT SAFEGUARD)
   ======================================================= */
 
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchAnnouncements() {
       try {
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
-        const { data, error } = await supabase
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Network timeout")), 5000)
+        );
+
+        const fetchQuery = supabase
           .from("announcements")
           .select("*")
           .eq("is_active", true)
@@ -135,7 +150,9 @@ export default function Home() {
           .order("event_date", { ascending: true })
           .limit(3);
 
-        if (!error && data) {
+        const { data, error }: any = await Promise.race([fetchQuery, timeout]);
+
+        if (isMounted && !error && data) {
           setAnnouncements(data);
         } else if (error) {
           console.error("Announcement error:", error);
@@ -143,25 +160,40 @@ export default function Home() {
       } catch (error) {
         console.error("Error fetching announcements:", error);
       } finally {
-        setLoadingAnnouncements(false);
+        if (isMounted) setLoadingAnnouncements(false);
       }
     }
 
     fetchAnnouncements();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   /* =======================================================
-     FETCH FRA & FCA RESULTS (SAFE 2-STEP QUERY)
+     FETCH FRA & FCA RESULTS (WITH TIMEOUT SAFEGUARD)
   ======================================================= */
 
   useEffect(() => {
+    let isMounted = true;
+
     async function fetchAssessmentResults() {
       try {
-        const { data: submissions, error: subError } = await supabase
+        const timeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Network timeout")), 5000)
+        );
+
+        const fetchQuery = supabase
           .from("student_exam_submissions")
           .select("id, percentage, passed, course_id, user_id")
           .eq("passed", true)
           .order("percentage", { ascending: false });
+
+        const { data: submissions, error: subError }: any = await Promise.race([
+          fetchQuery,
+          timeout,
+        ]);
 
         if (subError) {
           console.error("Submission fetch error:", JSON.stringify(subError, null, 2));
@@ -192,26 +224,34 @@ export default function Home() {
             };
           });
 
-          setFraPassers(
-            formattedPassers.filter(
-              (p: any) => p.course_slug === "foundational-discipleship" || p.course_slug === "fra"
-            )
-          );
+          if (isMounted) {
+            setFraPassers(
+              formattedPassers.filter(
+                (p: any) =>
+                  p.course_slug === "foundational-discipleship" || p.course_slug === "fra"
+              )
+            );
 
-          setFcaPassers(
-            formattedPassers.filter(
-              (p: any) => p.course_slug === "fundamental-competency" || p.course_slug === "fca"
-            )
-          );
+            setFcaPassers(
+              formattedPassers.filter(
+                (p: any) =>
+                  p.course_slug === "fundamental-competency" || p.course_slug === "fca"
+              )
+            );
+          }
         }
       } catch (error) {
         console.error("Error fetching assessment results:", error);
       } finally {
-        setLoadingAssessments(false);
+        if (isMounted) setLoadingAssessments(false);
       }
     }
 
     fetchAssessmentResults();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   /* =======================================================

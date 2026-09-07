@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -14,6 +14,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Separate Viewport Export (Required by Next.js App Router for mobile viewport settings)
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#020617", // Matches bg-slate-950
+};
+
 export const metadata: Metadata = {
   title: {
     default: "MCGC Discipleship System",
@@ -22,7 +32,15 @@ export const metadata: Metadata = {
   description:
     "An original discipleship framework developed for MCGC, providing a structured and intentional progression of biblical instruction for every member.",
   applicationName: "MCGC Discipleship System",
-  manifest: "/manifest.json", // <-- PWA Manifest linked here
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "MCGC Discipleship System",
+  },
+  formatDetection: {
+    telephone: false, // Prevents iOS Safari from breaking layout by auto-styling numbers as links
+  },
   keywords: [
     "MCGC",
     "MCGC Discipleship System",
@@ -57,9 +75,7 @@ export default function RootLayout({
         <Navbar />
 
         {/* Page Content */}
-        <main className="flex-1 flex flex-col">
-          {children}
-        </main>
+        <main className="flex-1 flex flex-col">{children}</main>
 
         {/* Global Footer */}
         <Footer />

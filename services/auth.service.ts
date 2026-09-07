@@ -1,14 +1,14 @@
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
 
-export async function signIn(email: string, password: string) {
-  const supabase = createClient();
-  return supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-}
-
-export async function signOut() {
-  const supabase = createClient();
-  return supabase.auth.signOut();
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookieOptions: {
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      },
+    }
+  );
 }
