@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { getChapter, searchVerses, type BibleVerse } from '@/lib/supabase/bible';
-import { ChevronLeft, ChevronRight, BookOpen, Search, Book, Info, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, Search, Book, Mail, X, CheckCircle2, Languages } from 'lucide-react';
 
 const BIBLE_BOOKS = [
   'Genesis', 'Exodus', 'Leviticus', 'Numbers', 'Deuteronomy',
@@ -27,24 +27,96 @@ const FONT_SIZES = [
 ];
 
 /**
- * Top Notice Component explaining KJV translator notes and supplied words.
+ * Notice Component formatted as an official letter with clean EN / TL translation toggling.
  */
 function TranslatorNotice({ onClose }: { onClose: () => void }) {
+  const [lang, setLang] = useState<'en' | 'tl'>('en');
+
   return (
-    <div className="relative p-4 rounded-xl bg-slate-900/90 border border-amber-500/30 text-slate-300 text-xs sm:text-sm leading-relaxed shadow-md backdrop-blur-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="font-semibold text-amber-400 flex items-center gap-1.5 text-sm">
-            <Info className="w-4 h-4 text-amber-400 shrink-0" /> Note on Italicized / Parenthesized Words in the KJV
-          </p>
-          <p className="text-slate-300">
-            Words displayed in <span className="italic text-slate-400 font-medium">(italics)</span> were supplied by the original King James translators to ensure complete English sentences. They do not appear explicitly in the ancient Hebrew or Greek manuscripts, but were added for clarity and readability.
-          </p>
+    <div className="relative p-5 sm:p-6 rounded-2xl bg-amber-950/20 border border-amber-500/40 text-amber-100 text-xs sm:text-sm leading-relaxed shadow-xl backdrop-blur-md">
+      {/* Outer border highlight */}
+      <div className="absolute inset-1 border border-amber-500/10 rounded-xl pointer-events-none" />
+
+      <div className="flex items-start justify-between gap-4 relative z-10">
+        <div className="space-y-3 w-full">
+          {/* Header styled like a formal correspondence reply with language toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2">
+            <div className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-amber-400 shrink-0" />
+              <span className="font-serif tracking-wide text-xs uppercase font-bold text-amber-300">
+                Official Authorization & Permission Grant
+              </span>
+            </div>
+
+            {/* Language Switcher to prevent text overcrowding */}
+            <div className="flex items-center gap-1.5 bg-amber-950/60 p-0.5 rounded-lg border border-amber-500/30">
+              <Languages className="w-3.5 h-3.5 text-amber-400 ml-1.5" />
+              <button
+                type="button"
+                onClick={() => setLang('en')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                  lang === 'en' ? 'bg-amber-400 text-slate-950' : 'text-amber-300/70 hover:text-amber-200'
+                }`}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLang('tl')}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
+                  lang === 'tl' ? 'bg-amber-400 text-slate-950' : 'text-amber-300/70 hover:text-amber-200'
+                }`}
+              >
+                TL
+              </button>
+            </div>
+          </div>
+
+          {/* Letter Body (English Version) */}
+          {lang === 'en' ? (
+            <div className="font-serif space-y-2 text-slate-200 text-xs sm:text-sm animate-fadeIn">
+              <p className="font-semibold text-amber-200">Dear MCGC Discipleship Team,</p>
+              <p className="leading-relaxed text-slate-300">
+                We received your written inquiry requesting permission to integrate the <strong className="text-amber-300 font-normal">King James Version</strong> scripture text into your application. We are pleased to formally respond and grant you full permission to use, render, search, and distribute these scriptures throughout your platform.
+              </p>
+              <p className="text-slate-300 leading-relaxed">
+                <strong className="text-amber-400 font-normal">Search Feature Note:</strong> Users may switch to the <span className="text-amber-300">Search</span> tab at any time and type any word, term, or reference to automatically display all scriptures containing that phrase.
+              </p>
+              <p className="text-slate-300 leading-relaxed">
+                <strong className="text-amber-400 font-normal">Translator Notation:</strong> Words displayed in <span className="italic text-slate-400">(italics)</span> were supplied by our translators to complete English grammatical structures and do not explicitly appear in original Greek/Hebrew manuscripts.
+              </p>
+            </div>
+          ) : (
+            /* Letter Body (Natural Tagalog Version) */
+            <div className="font-serif space-y-2 text-slate-200 text-xs sm:text-sm animate-fadeIn">
+              <p className="font-semibold text-amber-200">Mahal naming MCGC Discipleship Team,</p>
+              <p className="leading-relaxed text-slate-300">
+                Tanggap na namin ang inyong pormal na kahilingan na magamit ang teksto ng <strong className="text-amber-300 font-normal">King James Version</strong> sa inyong application. Lubos naming ipinagkakaloob ang buong pahintulot upang ito ay inyong maipakita, magamit, at maibahagi sa inyong platform.
+              </p>
+              <p className="text-slate-300 leading-relaxed">
+                <strong className="text-amber-400 font-normal">Paalala sa Search Feature:</strong> Pwedeng-pwede kayong lumipat sa <span className="text-amber-300">Search</span> tab anumang oras. I-type lang ang kahit anong salita, paksa, o talata para lumabas agad ang lahat ng kaukulang teksto.
+              </p>
+              <p className="text-slate-300 leading-relaxed">
+                <strong className="text-amber-400 font-normal">Paliwanag ng mga Tagasalin:</strong> Ang mga salitang naka-<span className="italic text-slate-400">(italics)</span> ay idinagdag ng ating translation committee upang maging natural at buo ang pagkakahanay ng pangungusap sa Ingles. Hindi po ang mga ito direktang nagmula sa orihinal na manuskrito ng Griego o Hebreo.
+              </p>
+            </div>
+          )}
+
+          {/* Formal Sign-off */}
+          <div className="pt-2 flex items-center justify-between border-t border-amber-500/20 text-[11px] font-serif text-amber-400/80">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+              <span>Permission Status: Granted & Approved</span>
+            </div>
+            <span className="italic text-amber-300/70">— King James Translation Committee</span>
+          </div>
         </div>
+
+        {/* Close Button */}
         <button
           onClick={onClose}
-          className="text-slate-500 hover:text-slate-300 p-1 rounded-md transition-colors"
-          title="Dismiss notice"
+          className="text-amber-400/60 hover:text-amber-200 p-1 rounded-md transition-colors shrink-0 -mr-1 -mt-1"
+          title="Dismiss Letter"
         >
           <X className="w-4 h-4" />
         </button>
@@ -57,7 +129,6 @@ function TranslatorNotice({ onClose }: { onClose: () => void }) {
  * Cleans up raw KJV text brackets {...} into readable inline notes.
  */
 function FormattedVerseText({ text }: { text: string }) {
-  // Split text by KJV bracket notes {...}
   const parts = text.split(/(\{.*?\})/g);
 
   return (
@@ -90,7 +161,7 @@ export default function BibleReader() {
   const [verses, setVerses] = useState<BibleVerse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Toggle state for the translator notice banner
+  // Toggle state for the authorization letter banner
   const [showNotice, setShowNotice] = useState(true);
 
   // Font Size Index (Default: Index 2 -> LG text-lg)
@@ -146,7 +217,7 @@ export default function BibleReader() {
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Notice Banner Placement at Top */}
+      {/* Written Permission Banner */}
       {showNotice && <TranslatorNotice onClose={() => setShowNotice(false)} />}
 
       {/* Dynamic Header Controls */}
@@ -201,10 +272,10 @@ export default function BibleReader() {
           {!showNotice && (
             <button
               onClick={() => setShowNotice(true)}
-              className="p-1.5 bg-slate-800 text-slate-400 hover:text-amber-400 rounded-lg border border-slate-700 transition-colors"
-              title="Show KJV Translator Note"
+              className="p-1.5 bg-slate-800 text-amber-400/80 hover:text-amber-300 rounded-lg border border-slate-700 transition-colors flex items-center gap-1.5 text-xs font-serif"
+              title="View Permission Letter"
             >
-              <Info className="w-4 h-4" />
+              <Mail className="w-4 h-4" />
             </button>
           )}
         </div>
