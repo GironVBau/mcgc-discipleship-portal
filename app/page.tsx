@@ -8,11 +8,14 @@ import {
   BookOpen,
   GraduationCap,
   ShieldCheck,
-  ArrowUpRight,
   Calendar,
   Clock,
   Award,
   Trophy,
+  Download,
+  Share,
+  PlusSquare,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -92,6 +95,155 @@ function PhilippineClock() {
         <span className="text-amber-400/60 font-medium">PHT</span>
       </div>
     </div>
+  );
+}
+
+/* =========================================================
+   PWA INSTALL BANNER (CROSS-PLATFORM & IOS SUPPORT)
+========================================================= */
+
+function PwaInstallBanner() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isIOS, setIsIOS] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showIOSModal, setShowIOSModal] = useState(false);
+
+  useEffect(() => {
+    // Detect if app is already running as standalone PWA
+    const isApp =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as any).standalone === true;
+    setIsStandalone(isApp);
+
+    // Detect iOS devices (iPhone/iPad/iPod)
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    const isIosDevice =
+      /iphone|ipad|ipod/.test(userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    setIsIOS(isIosDevice);
+
+    // Capture standard Chrome/Android native install prompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () =>
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  // Hide banner if app is already installed/standalone
+  if (isStandalone) return null;
+
+  // Hide banner on non-iOS browsers if native event hasn't fired
+  if (!isIOS && !deferredPrompt) return null;
+
+  const handleInstallClick = () => {
+    if (isIOS) {
+      setShowIOSModal(true);
+    } else if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
+    }
+  };
+
+  return (
+    <>
+      {/* Banner Component */}
+      <div className="w-full bg-slate-950/90 border-b border-amber-400/20 px-4 py-3 backdrop-blur-md relative z-30">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/20 flex items-center justify-center shrink-0">
+              <Download className="w-4 h-4 text-amber-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-100 truncate">
+                Install MCGC Portal App
+              </p>
+              <p className="text-[11px] text-slate-400 truncate">
+                Quick access to learning tracks & announcements
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleInstallClick}
+            className="shrink-0 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Install Now</span>
+          </button>
+        </div>
+      </div>
+
+      {/* iOS Safari Installation Steps Modal */}
+      {showIOSModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-400/20 rounded-2xl max-w-sm w-full p-6 relative space-y-4 shadow-2xl">
+            <button
+              onClick={() => setShowIOSModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-300">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-100 text-sm">
+                  Install on iOS / Safari
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Follow these steps to add to your Home Screen
+                </p>
+              </div>
+            </div>
+
+            <ol className="space-y-3 text-xs text-slate-300 pt-2 border-t border-slate-800">
+              <li className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-mono flex items-center justify-center shrink-0 text-[11px]">
+                  1
+                </span>
+                <span>
+                  Tap the <strong className="text-slate-100">Share</strong> button{" "}
+                  <Share className="w-3.5 h-3.5 inline text-amber-400 ml-0.5" /> in
+                  Safari's bottom navigation bar.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-mono flex items-center justify-center shrink-0 text-[11px]">
+                  2
+                </span>
+                <span>
+                  Scroll down the share menu and select{" "}
+                  <strong className="text-slate-100">Add to Home Screen</strong>{" "}
+                  <PlusSquare className="w-3.5 h-3.5 inline text-amber-400 ml-0.5" />.
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-5 h-5 rounded-full bg-slate-800 text-amber-400 font-mono flex items-center justify-center shrink-0 text-[11px]">
+                  3
+                </span>
+                <span>
+                  Tap <strong className="text-slate-100">Add</strong> in the top-right
+                  corner to complete installation.
+                </span>
+              </li>
+            </ol>
+
+            <button
+              onClick={() => setShowIOSModal(false)}
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium py-2 rounded-xl transition-colors mt-2"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -292,6 +444,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#02050e] text-slate-100 flex flex-col relative overflow-x-hidden selection:bg-amber-300 selection:text-slate-950">
+      
+      {/* PWA INSTALL BANNER */}
+      <PwaInstallBanner />
 
       {/* =====================================================
           TYPOGRAPHY & ANIMATIONS
