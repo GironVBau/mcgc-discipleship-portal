@@ -193,3 +193,82 @@ export async function deleteAnnouncement(id: string): Promise<{ success: boolean
     return { success: false, error: error.message || "Failed to delete announcement." };
   }
 }
+
+/**
+ * Creates an announcement. 
+ * Database trigger handles notification generation automatically.
+ */
+export async function createAnnouncementWithNotifications(
+  title: string,
+  description: string,
+  eventDate: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Single write to announcements table — SQL Trigger handles fan-out to notifications table
+    const { error: announcementError } = await supabaseAdmin
+      .from("announcements")
+      .insert([
+        {
+          title: title.trim(),
+          description: description.trim(),
+          event_date: new Date(eventDate).toISOString(),
+          is_active: true,
+        },
+      ]);
+
+    if (announcementError) {
+      return { success: false, error: announcementError.message };
+    }
+
+    revalidatePath("/dashboard/admin");
+    revalidatePath("/notifications");
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message || "Failed to create announcement." };
+  }
+}
+
+/**
+ * Direct broadcast update method without creating an announcement record.
+ */
+export async function createAdminUpdate(
+  title: string,
+  message: string,
+  link?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: users, error: userError } = await supabaseAdmin
+      .from("profiles")
+      .select("id");
+
+    if (userError || !users || users.length === 0) {
+      return { success: false, error: userError?.message || "No registered users found." };
+    }
+
+    const notificationRows = users.map((user) => ({
+      user_id: user.id,
+      title: title.trim(),
+      message: message.trim(),
+      link: link || "/notifications",
+      is_read: false,
+    }));
+
+    const { error: insertError } = await supabaseAdmin
+      .from("notifications")
+      .insert(notificationRows);
+
+    if (insertError) {
+      return { success: false, error: insertError.message };
+    }
+
+    revalidatePath("/dashboard/admin");
+    revalidatePath("/notifications");
+    revalidatePath("/");
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message || "Failed to broadcast update." };
+  }
+}
