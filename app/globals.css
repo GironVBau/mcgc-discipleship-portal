@@ -65,6 +65,25 @@ body {
   clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
+/* --- CUSTOM ANIMATIONS (Mobile & Cross-Device Compatible) --- */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1) translateZ(0);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.03) translateZ(0);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
 /* --- PRINT / PDF CERTIFICATE STYLING --- */
 @media print {
   /* Force landscape orientation instructions */
