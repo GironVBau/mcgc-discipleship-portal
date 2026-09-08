@@ -27,12 +27,35 @@ export default function NotificationsPage() {
     )
   );
 
-  const updateAppBadge = useCallback((unreadCount: number) => {
-    if (typeof window !== "undefined" && "setAppBadge" in navigator) {
-      if (unreadCount > 0) {
-        navigator.setAppBadge(unreadCount).catch(() => {});
-      } else {
-        navigator.clearAppBadge().catch(() => {});
+  const updateAppBadge = useCallback(async (unreadCount: number) => {
+    if (typeof window !== "undefined") {
+      // 1. Try standard Badging API
+      if ("setAppBadge" in navigator) {
+        try {
+          if (unreadCount > 0) {
+            await (navigator as Navigator & { setAppBadge: (count?: number) => Promise<void> }).setAppBadge(unreadCount);
+          } else {
+            await (navigator as Navigator & { clearAppBadge: () => Promise<void> }).clearAppBadge();
+          }
+        } catch {}
+      }
+
+      // 2. Try Badging via Service Worker registration with safe casting
+      if ("serviceWorker" in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          if (registration) {
+            const swReg = registration as unknown as {
+              setAppBadge?: (count?: number) => Promise<void>;
+              clearAppBadge?: () => Promise<void>;
+            };
+            if (unreadCount > 0 && typeof swReg.setAppBadge === "function") {
+              await swReg.setAppBadge(unreadCount);
+            } else if (unreadCount === 0 && typeof swReg.clearAppBadge === "function") {
+              await swReg.clearAppBadge();
+            }
+          }
+        } catch {}
       }
     }
   }, []);
@@ -262,7 +285,6 @@ export default function NotificationsPage() {
                       : "bg-slate-900/90 border-amber-400/40 shadow-[0_8px_30px_rgba(0,0,0,0.5),_0_0_20px_rgba(251,191,36,0.07)] hover:border-amber-400/60"
                   }`}
                 >
-                  {/* Subtle highlight border effect on unread cards */}
                   {!n.is_read && (
                     <div className="absolute top-0 left-6 right-6 h-[1px] bg-gradient-to-r from-transparent via-amber-400/50 to-transparent pointer-events-none" />
                   )}
