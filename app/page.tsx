@@ -16,6 +16,8 @@ import {
   Share,
   PlusSquare,
   X,
+  Bell,
+  Sparkles,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -93,6 +95,94 @@ function PhilippineClock() {
         <span className="text-slate-300">{dateString || "Loading date..."}</span>
 
         <span className="text-amber-400/60 font-medium">PHT</span>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   LATEST UNREAD UPDATE BANNER (WITH DISMISS BUTTON)
+========================================================= */
+
+function LatestUpdateBanner() {
+  const [latestAnnouncement, setLatestAnnouncement] = useState<Announcement | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    async function fetchLatest() {
+      // Check if user dismissed a specific announcement ID during this session
+      try {
+        const { data, error } = await supabase
+          .from("announcements")
+          .select("id, title, description, event_date")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          const item = data[0];
+          const dismissedId = sessionStorage.getItem(`dismissed_announcement_${item.id}`);
+          if (!dismissedId) {
+            setLatestAnnouncement(item);
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching latest announcement for banner:", err);
+      }
+    }
+
+    fetchLatest();
+  }, []);
+
+  if (!latestAnnouncement || dismissed) return null;
+
+  let displayTitle = latestAnnouncement.title || "";
+  if (displayTitle.toLowerCase().startsWith("new announcement:")) {
+    displayTitle = displayTitle.replace(/^new announcement:\s*/i, "");
+  }
+
+  const handleDismiss = () => {
+    setDismissed(true);
+    sessionStorage.setItem(`dismissed_announcement_${latestAnnouncement.id}`, "true");
+  };
+
+  return (
+    <div className="relative z-40 bg-gradient-to-r from-amber-500/20 via-slate-950/90 to-amber-600/20 border-b border-amber-400/30 px-4 py-3 backdrop-blur-xl shadow-lg">
+      <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)] animate-pulse">
+            <Sparkles className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-amber-300 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                Latest Update
+              </span>
+              <p className="text-xs font-bold text-slate-100 truncate">
+                {displayTitle}
+              </p>
+            </div>
+            <p className="text-[11px] text-slate-300 truncate mt-0.5">
+              {latestAnnouncement.description || "Check out the new update posted on the notifications page."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/notifications"
+            className="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all shadow-sm hover:scale-105 active:scale-95"
+          >
+            View All
+          </Link>
+          <button
+            onClick={handleDismiss}
+            className="p-1.5 rounded-lg bg-slate-9tor/5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors border border-white/5"
+            title="Dismiss banner"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -445,6 +535,9 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[#02050e] text-slate-100 flex flex-col relative overflow-x-hidden selection:bg-amber-300 selection:text-slate-950">
       
+      {/* LATEST UPDATE NOTIFICATION BANNER */}
+      <LatestUpdateBanner />
+
       {/* PWA INSTALL BANNER */}
       <PwaInstallBanner />
 
@@ -908,13 +1001,16 @@ export default function Home() {
 
                     </span>
 
-                    <span className="text-amber-300 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 font-medium">
+                    <Link
+                      href="/notifications"
+                      className="text-amber-300 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1 font-medium"
+                    >
 
                       View
 
                       <ChevronRight className="w-3 h-3" />
 
-                    </span>
+                    </Link>
 
                   </div>
 
