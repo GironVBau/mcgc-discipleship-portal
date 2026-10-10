@@ -110,7 +110,6 @@ function LatestUpdateBanner() {
 
   useEffect(() => {
     async function fetchLatest() {
-      // Check if user dismissed a specific announcement ID during this session
       try {
         const { data, error } = await supabase
           .from("announcements")
@@ -177,7 +176,7 @@ function LatestUpdateBanner() {
           </Link>
           <button
             onClick={handleDismiss}
-            className="p-1.5 rounded-lg bg-slate-9tor/5 hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors border border-white/5"
+            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors border border-white/5"
             title="Dismiss banner"
           >
             <X className="w-4 h-4" />
@@ -189,14 +188,15 @@ function LatestUpdateBanner() {
 }
 
 /* =========================================================
-   PWA INSTALL BANNER (CROSS-PLATFORM & IOS SUPPORT)
+   PWA INSTALL BANNER & BOTTOM FLOATING INSTALL BUTTON
 ========================================================= */
 
-function PwaInstallBanner() {
+function PwaInstallController() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [showIOSModal, setShowIOSModal] = useState(false);
+  const [dismissedBanner, setDismissedBanner] = useState(false);
 
   useEffect(() => {
     // Detect if app is already running as standalone PWA
@@ -223,48 +223,77 @@ function PwaInstallBanner() {
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
   }, []);
 
-  // Hide banner if app is already installed/standalone
+  // Hide everything if app is already installed/standalone
   if (isStandalone) return null;
-
-  // Hide banner on non-iOS browsers if native event hasn't fired
-  if (!isIOS && !deferredPrompt) return null;
 
   const handleInstallClick = () => {
     if (isIOS) {
       setShowIOSModal(true);
     } else if (deferredPrompt) {
       deferredPrompt.prompt();
-      deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
+      deferredPrompt.userChoice.then((choiceResult: any) => {
+        if (choiceResult.outcome === "accepted") {
+          setDeferredPrompt(null);
+        }
+      });
+    } else {
+      // Fallback modal or guidance if prompt hasn't triggered yet
+      alert("To install this app, open your browser menu (e.g. Chrome settings) and select 'Install app' or 'Add to Home screen'.");
     }
   };
 
   return (
     <>
-      {/* Banner Component */}
-      <div className="w-full bg-slate-950/90 border-b border-amber-400/20 px-4 py-3 backdrop-blur-md relative z-30">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/20 flex items-center justify-center shrink-0">
-              <Download className="w-4 h-4 text-amber-300" />
+      {/* 1. TOP PWA INSTALL BANNER (Dismissible) */}
+      {!dismissedBanner && (isIOS || deferredPrompt) && (
+        <div className="w-full bg-slate-950/90 border-b border-amber-400/20 px-4 py-3 backdrop-blur-md relative z-30">
+          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/20 flex items-center justify-center shrink-0">
+                <Download className="w-4 h-4 text-amber-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-100 truncate">
+                  Install MCGC Portal App
+                </p>
+                <p className="text-[11px] text-slate-400 truncate">
+                  Quick access to learning tracks & announcements
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-slate-100 truncate">
-                Install MCGC Portal App
-              </p>
-              <p className="text-[11px] text-slate-400 truncate">
-                Quick access to learning tracks & announcements
-              </p>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleInstallClick}
+                className="bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Install Now</span>
+              </button>
+              <button
+                onClick={() => setDismissedBanner(true)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-200 transition-colors"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
-
-          <button
-            onClick={handleInstallClick}
-            className="shrink-0 bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Install Now</span>
-          </button>
         </div>
+      )}
+
+      {/* 2. FIXED FLOATING INSTALL BUTTON AT THE BOTTOM (For Android & Apple Users) */}
+      <div className="fixed bottom-5 right-5 z-40 animate-bounce hover:animate-none">
+        <button
+          onClick={handleInstallClick}
+          className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold px-4 py-3 rounded-full shadow-[0_10px_25px_rgba(251,191,36,0.4)] border border-amber-200/40 flex items-center gap-2 transition-all duration-300 hover:scale-105 active:scale-95"
+          title="Install MCGC App"
+        >
+          <div className="w-6 h-6 rounded-full bg-slate-950/10 flex items-center justify-center">
+            <Download className="w-3.5 h-3.5 text-slate-950" />
+          </div>
+          <span className="tracking-wide uppercase text-[11px]">Install App</span>
+        </button>
       </div>
 
       {/* iOS Safari Installation Steps Modal */}
@@ -538,8 +567,8 @@ export default function Home() {
       {/* LATEST UPDATE NOTIFICATION BANNER */}
       <LatestUpdateBanner />
 
-      {/* PWA INSTALL BANNER */}
-      <PwaInstallBanner />
+      {/* PWA INSTALL CONTROLLER & BOTTOM FLOATING BUTTON */}
+      <PwaInstallController />
 
       {/* =====================================================
           TYPOGRAPHY & ANIMATIONS
